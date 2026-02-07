@@ -150,24 +150,8 @@ export function useUnits(propertyId?: string) {
     },
     onSuccess: async (created: Unit) => {
       queryClient.invalidateQueries({ queryKey: ['units'] });
-      try {
-        const defaultRooms = [
-          { unit_id: created.id, nome_ambiente: 'Cucina', ordine_visualizzazione: 1 },
-          { unit_id: created.id, nome_ambiente: 'Soggiorno', ordine_visualizzazione: 2 },
-          { unit_id: created.id, nome_ambiente: 'Camera', ordine_visualizzazione: 3 },
-          { unit_id: created.id, nome_ambiente: 'Bagno', ordine_visualizzazione: 4 },
-          { unit_id: created.id, nome_ambiente: 'Altro', ordine_visualizzazione: 5 },
-        ];
-        const { error: roomError } = await supabase
-          .from('inventory_rooms')
-          .insert(defaultRooms);
-        if (roomError) throw roomError;
-        queryClient.invalidateQueries({ queryKey: ['inventory_rooms', created.id] });
-        toast({ title: 'Unità creata', description: 'Stanze standard generate automaticamente.' });
-      } catch (err: unknown) {
-        const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: string }).message) : 'Errore sconosciuto';
-        toast({ variant: 'destructive', title: 'Unità creata', description: `Errore nella generazione delle stanze: ${msg}` });
-      }
+      // Semplificazione: niente stanze relazionali predefinite
+      toast({ title: 'Unità creata', description: 'Ora puoi aggiungere beni e indicare la stanza come testo.' });
     },
     onError: (error) => {
       toast({ variant: 'destructive', title: 'Errore', description: error.message });

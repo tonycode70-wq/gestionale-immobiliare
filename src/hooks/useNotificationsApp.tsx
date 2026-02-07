@@ -142,7 +142,7 @@ export function useNotificationsApp() {
     }
   }, [user, queryClient]);
 
-  // Check deadlines on mount (only once per session)
+  // Check deadlines on mount (riattivato)
   useEffect(() => {
     if (user) {
       checkFiscalDeadlines();

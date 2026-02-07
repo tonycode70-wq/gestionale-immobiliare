@@ -1,4 +1,4 @@
- import { useState } from 'react';
+ import { useState, useEffect } from 'react';
  import { useForm } from 'react-hook-form';
  import { zodResolver } from '@hookform/resolvers/zod';
  import { z } from 'zod';
@@ -41,7 +41,6 @@
    AlertDialogTrigger,
  } from '@/components/ui/alert-dialog';
 import { useInventory, type InventoryItem } from '@/hooks/useInventory';
-import { useInventoryRooms } from '@/hooks/useInventoryRooms';
  import { Package, Trash2, Pencil, Plus } from 'lucide-react';
  
 const inventorySchema = z.object({
@@ -51,7 +50,7 @@ const inventorySchema = z.object({
    stato: z.string().optional(),
    data_inserimento: z.string().min(1, 'Inserisci la data'),
    note: z.string().optional(),
-  inventory_room_id: z.string().optional(),
+  room: z.string().optional(),
  });
  
  type InventoryFormData = z.infer<typeof inventorySchema>;
@@ -62,13 +61,12 @@ interface InventoryFormProps {
    cadastralUnitId?: string;
    trigger?: React.ReactNode;
    onSuccess?: () => void;
-  defaultRoomId?: string;
+  defaultRoomName?: string;
  }
  
-export function InventoryForm({ item, unitId, cadastralUnitId, trigger, onSuccess, defaultRoomId }: InventoryFormProps) {
+export function InventoryForm({ item, unitId, cadastralUnitId, trigger, onSuccess, defaultRoomName }: InventoryFormProps) {
    const [open, setOpen] = useState(false);
    const { createItem, updateItem, deleteItem } = useInventory(unitId, cadastralUnitId);
-  const { rooms } = useInventoryRooms(unitId);
    const isEditing = !!item;
  
    const form = useForm<InventoryFormData>({
@@ -80,11 +78,33 @@ export function InventoryForm({ item, unitId, cadastralUnitId, trigger, onSucces
        stato: item?.stato || 'buono',
        data_inserimento: item?.data_inserimento || new Date().toISOString().split('T')[0],
        note: item?.note || '',
-      inventory_room_id: item?.inventory_room_id || defaultRoomId || '',
+      room: item?.room || defaultRoomName || '',
      },
    });
  
+  useEffect(() => {
+    if (open && !isEditing && defaultRoomName) {
+      form.setValue('room', defaultRoomName);
+    }
+  }, [open, isEditing, defaultRoomName, form]);
+
+  useEffect(() => {
+    const current = form.getValues('room');
+    if (!isEditing && defaultRoomName && !current) {
+      form.setValue('room', defaultRoomName);
+    }
+  }, [defaultRoomName, isEditing, form]);
+
+  const normalizeRoomName = (name?: string) => {
+    if (!name) return '';
+    const t = name.trim().replace(/\s+/g, ' ').toLowerCase();
+    return t.replace(/\b\w/g, s => s.toUpperCase());
+  };
+
    const onSubmit = async (data: InventoryFormData) => {
+    console.log('DATI FORM:', data);
+    console.log('VALORE STANZA SUBMIT:', form.getValues('room'));
+    const normalizedRoom = normalizeRoomName(data.room || '');
      const payload = {
        unit_id: unitId,
        cadastral_unit_id: cadastralUnitId || null,
@@ -94,6 +114,7 @@ export function InventoryForm({ item, unitId, cadastralUnitId, trigger, onSucces
        stato: data.stato || null,
        data_inserimento: data.data_inserimento,
        note: data.note || null,
+      room: normalizedRoom || null,
      };
  
      if (isEditing) {
@@ -205,22 +226,13 @@ export function InventoryForm({ item, unitId, cadastralUnitId, trigger, onSucces
                />
               <FormField
                 control={form.control}
-                name="inventory_room_id"
+                name="room"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Stanza</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleziona stanza" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {rooms.map(r => (
-                          <SelectItem key={r.id} value={r.id}>{r.nome_ambiente}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Input {...field} placeholder="Es. Cucina, Bagno" />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

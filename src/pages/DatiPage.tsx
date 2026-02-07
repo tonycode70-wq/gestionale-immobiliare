@@ -11,8 +11,6 @@ import { PropertyForm, UnitForm, TenantForm, LeaseForm } from '@/components/form
 import { CadastralForm } from '@/components/forms/CadastralForm';
 import { AdminForm } from '@/components/forms/AdminForm';
 import { InventoryForm } from '@/components/forms/InventoryForm';
-import { InventoryRoomForm } from '@/components/forms/InventoryRoomForm';
-import { useInventoryRooms } from '@/hooks/useInventoryRooms';
 import { useProperties, useUnits } from '@/hooks/useProperties';
 import { useLeases, useLeaseParties } from '@/hooks/useLeases';
 import { useTenants } from '@/hooks/useTenants';
@@ -70,7 +68,25 @@ const DatiPage = () => {
 
   // Fetch inventory for selected unit
   const { inventoryItems, isLoading: loadingInventory } = useInventory(unit?.id);
-  const { rooms, isLoading: loadingRooms } = useInventoryRooms(unit?.id);
+
+  const groupedInventory = useMemo(() => {
+    return inventoryItems.reduce((acc, item) => {
+      const roomName = item.room ? item.room.trim() : 'Senza stanza';
+      if (!acc[roomName]) {
+        acc[roomName] = [];
+      }
+      acc[roomName].push(item);
+      return acc;
+    }, {} as Record<string, typeof inventoryItems>);
+  }, [inventoryItems]);
+
+  const sortedRooms = useMemo(() => {
+    return Object.keys(groupedInventory || {}).sort((a, b) => {
+      if (a === 'Senza stanza') return 1;
+      if (b === 'Senza stanza') return -1;
+      return a.localeCompare(b);
+    });
+  }, [groupedInventory]);
 
   if (isLoading) {
     return (
@@ -528,34 +544,29 @@ const DatiPage = () => {
 
             {/* INVENTARIO TAB */}
             <TabsContent value="inventario" className="space-y-4 mt-4">
-              {loadingInventory || loadingRooms ? (
+              {loadingInventory ? (
                 <div className="flex justify-center py-6">
                   <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 </div>
-              ) : (rooms.length === 0 && inventoryItems.length === 0) ? (
+              ) : (inventoryItems.length === 0) ? (
                 <div className="mobile-card text-center py-6">
                   <Package className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
                   <p className="text-muted-foreground mb-4">Nessun bene registrato nell'inventario</p>
                   <div className="flex gap-2 justify-center">
-                    <InventoryRoomForm unitId={unit.id} />
                     <InventoryForm unitId={unit.id} />
                   </div>
                 </div>
               ) : (
                 <>
-                  <div className="flex gap-2">
-                    <InventoryRoomForm unitId={unit.id} trigger={<Button variant="outline" size="sm"><Plus className="h-4 w-4 mr-2" />Aggiungi stanza</Button>} />
-                  </div>
-                  {rooms.map(room => {
-                    const roomItems = inventoryItems.filter(i => i.inventory_room_id === room.id);
+                  {sortedRooms.map(roomName => {
+                    const roomItems = groupedInventory[roomName] || [];
                     return (
-                      <div key={room.id} className="space-y-2">
+                      <div key={String(roomName)} className="space-y-2">
                         <div className="mobile-card bg-muted/50">
                           <div className="flex justify-between items-center">
-                            <h3 className="font-semibold text-foreground">{room.nome_ambiente}</h3>
+                            <h3 className="font-semibold text-foreground">{roomName}</h3>
                             <div className="flex gap-2">
-                              <InventoryRoomForm room={room} unitId={unit.id} trigger={<Button size="sm" variant="ghost"><Pencil className="h-4 w-4" /></Button>} />
-                              <InventoryForm unitId={unit.id} defaultRoomId={room.id} trigger={<Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Aggiungi</Button>} />
+                              <InventoryForm unitId={unit.id} defaultRoomName={String(roomName)} trigger={<Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Aggiungi</Button>} />
                             </div>
                           </div>
                         </div>
@@ -567,7 +578,7 @@ const DatiPage = () => {
                               key={item.id}
                               item={item}
                               unitId={unit.id}
-                              defaultRoomId={room.id}
+                              defaultRoomName={String(roomName)}
                               trigger={
                                 <div className="mobile-card cursor-pointer hover:bg-muted/50">
                                   <div className="flex justify-between items-start">
@@ -599,48 +610,6 @@ const DatiPage = () => {
                       </div>
                     );
                   })}
-                  {inventoryItems.filter(i => !i.inventory_room_id).length > 0 && (
-                    <>
-                      <div className="mobile-card bg-muted/50">
-                        <div className="flex justify-between items-center">
-                          <h3 className="font-semibold text-foreground">Senza stanza</h3>
-                          <InventoryForm unitId={unit.id} trigger={<Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Aggiungi</Button>} />
-                        </div>
-                      </div>
-                      {inventoryItems.filter(i => !i.inventory_room_id).map(item => (
-                        <InventoryForm
-                          key={item.id}
-                          item={item}
-                          unitId={unit.id}
-                          trigger={
-                            <div className="mobile-card cursor-pointer hover:bg-muted/50">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <h4 className="font-medium text-foreground">{item.nome_bene}</h4>
-                                  {item.descrizione && (
-                                    <p className="text-sm text-muted-foreground line-clamp-1">{item.descrizione}</p>
-                                  )}
-                                  <div className="flex gap-3 mt-2 text-xs text-muted-foreground">
-                                    <span>Qtà: {item.quantita}</span>
-                                    {item.stato && (
-                                      <StatusBadge status={
-                                        item.stato === 'nuovo' || item.stato === 'ottimo' ? 'success' :
-                                        item.stato === 'buono' ? 'info' :
-                                        item.stato === 'discreto' ? 'warning' : 'error'
-                                      }>
-                                        {item.stato}
-                                      </StatusBadge>
-                                    )}
-                                  </div>
-                                </div>
-                                <Button size="sm" variant="ghost"><Pencil className="h-4 w-4" /></Button>
-                              </div>
-                            </div>
-                          }
-                        />
-                      ))}
-                    </>
-                  )}
                   <div className="mobile-card bg-muted/50">
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-muted-foreground">Totale beni</span>

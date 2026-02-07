@@ -5,6 +5,7 @@
    "Access-Control-Allow-Origin": "*",
    "Access-Control-Allow-Headers":
      "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
  };
  
  interface FiscalDeadline {
@@ -15,9 +16,9 @@
  }
  
  const handler = async (req: Request): Promise<Response> => {
-   if (req.method === "OPTIONS") {
-     return new Response(null, { headers: corsHeaders });
-   }
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
  
    try {
      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

@@ -7,7 +7,7 @@
    id: string;
    unit_id: string;
    cadastral_unit_id: string | null;
-  inventory_room_id: string | null;
+  room: string | null;
    nome_bene: string;
    descrizione: string | null;
    quantita: number;
@@ -37,7 +37,7 @@ export function useInventory(unitId?: string, cadastralUnitId?: string, roomId?:
          query = query.eq('cadastral_unit_id', cadastralUnitId);
        }
       if (roomId) {
-        query = query.eq('inventory_room_id', roomId);
+        query = query.eq('room', roomId);
       }
        
        const { data, error } = await query.order('nome_bene');
