@@ -43,6 +43,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Plus, CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useUnits } from '@/hooks/useProperties';
 
 const reminderSchema = z.object({
   titolo: z.string().min(1, 'Il titolo è obbligatorio').max(200),
@@ -53,6 +54,7 @@ const reminderSchema = z.object({
   frequenza_mesi: z.coerce.number().min(1).optional().nullable(),
   giorni_anticipo_promemoria: z.coerce.number().min(0).default(7),
   note: z.string().max(1000).optional().nullable(),
+  unit_id: z.string().default('general'),
 });
 
 type ReminderFormData = z.infer<typeof reminderSchema>;
@@ -76,6 +78,7 @@ export function ReminderForm({ trigger, onSuccess }: ReminderFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { units } = useUnits();
 
   const form = useForm<ReminderFormData>({
     resolver: zodResolver(reminderSchema),
@@ -88,6 +91,7 @@ export function ReminderForm({ trigger, onSuccess }: ReminderFormProps) {
       frequenza_mesi: undefined,
       giorni_anticipo_promemoria: 7,
       note: '',
+      unit_id: 'general',
     },
   });
 
@@ -100,6 +104,7 @@ export function ReminderForm({ trigger, onSuccess }: ReminderFormProps) {
     try {
       const { error } = await supabase.from('reminders').insert({
         user_id: user.id,
+        unit_id: data.unit_id && data.unit_id !== 'general' ? data.unit_id : null,
         titolo: data.titolo,
         tipo: data.tipo,
         descrizione: data.descrizione || null,
@@ -149,6 +154,29 @@ export function ReminderForm({ trigger, onSuccess }: ReminderFormProps) {
         
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="unit_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Unità Immobiliare *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleziona unità" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="general">Generale</SelectItem>
+                      {units.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.nome_interno}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="titolo"
