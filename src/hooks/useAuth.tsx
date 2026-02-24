@@ -1,6 +1,5 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
 
 interface AuthContextType {
   user: User | null;
@@ -19,54 +18,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    const guest = { id: 'local-guest' } as unknown as User;
+    setUser(guest);
+    setSession(null);
+    setLoading(false);
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error: error as Error | null };
+    setUser({ id: 'local-guest' } as unknown as User);
+    setSession(null);
+    return { error: null };
   };
 
   const signUp = async (email: string, password: string, nome?: string, cognome?: string) => {
-    const { error, data } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: window.location.origin,
-        data: { nome, cognome }
-      }
-    });
-
-    if (!error && data.user) {
-      // Update profile with name info
-      await supabase.from('profiles').update({
-        nome,
-        cognome
-      }).eq('user_id', data.user.id);
-    }
-
-    return { error: error as Error | null };
+    setUser({ id: 'local-guest' } as unknown as User);
+    setSession(null);
+    return { error: null };
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
+    setUser({ id: 'local-guest' } as unknown as User);
     setSession(null);
   };
 
