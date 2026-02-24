@@ -278,7 +278,7 @@ const FinanzePage = () => {
                 <span className="font-semibold text-success">{formatCurrency(annualNumbers.nettoMedioMensile)}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-border">
-                <span className="text-sm text-muted-foreground">Imposte stimate (cedolare 21%)</span>
+                <span className="text-sm text-muted-foreground">Imposte stimate (cedolare)</span>
                 <span className="font-semibold text-destructive">{formatCurrency(annualNumbers.cedolareTot)}</span>
               </div>
               {imuSummary && (

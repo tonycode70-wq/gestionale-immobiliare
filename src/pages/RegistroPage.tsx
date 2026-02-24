@@ -125,7 +125,17 @@ const RegistroPage = () => {
     const imponibile = filteredPayments.reduce((sum, p) => sum + (p.payment.importo_canone_pagato || 0), 0);
     const speseCondominialiIncassate = filteredPayments.reduce((sum, p) => sum + (p.payment.importo_spese_pagato || 0), 0);
     const incassatoTotale = imponibile + speseCondominialiIncassate;
-    const cedolareTasse = imponibile * 0.21;
+    const cedolareTasse = Math.round(
+      filteredPayments.reduce((sum, p) => {
+        const regime = p.lease?.regime_locativo;
+        if (!regime || (regime !== 'cedolare_21' && regime !== 'cedolare_10')) return sum;
+        const aliquota = regime === 'cedolare_21' ? 0.21 : 0.10;
+        const annoContratto = p.lease ? (selectedYear - new Date(p.lease.data_inizio).getFullYear() + 1) : 0;
+        const imponibileRata = p.payment.importo_canone_pagato || 0;
+        const tax = annoContratto === 1 ? 0 : imponibileRata * aliquota;
+        return sum + tax;
+      }, 0) * 100
+    ) / 100;
     const speseStraord = filteredExpenses.reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
     const nettoReale = incassatoTotale - cedolareTasse - speseStraord;
     return {
@@ -136,7 +146,7 @@ const RegistroPage = () => {
       speseStraord,
       nettoReale,
     };
-  }, [filteredPayments, filteredExpenses]);
+  }, [filteredPayments, filteredExpenses, selectedYear]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
