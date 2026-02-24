@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -42,15 +42,13 @@ export function usePropertyAdmins(propertyId?: string) {
     queryFn: async () => {
       if (!user) return [];
       
-      let query = supabase.from('property_admins').select('*');
-      
+      const all: unknown[] = db.getAll();
+      let items = all.filter((x) => (x as { __table: string }).__table === 'property_admins').map((x) => x as PropertyAdmin);
       if (propertyId) {
-        query = query.eq('property_id', propertyId);
+        items = items.filter((x) => x.property_id === propertyId);
       }
-      
-      const { data, error } = await query.order('ragione_sociale');
-      if (error) throw error;
-      return data as PropertyAdmin[];
+      items.sort((a, b) => (a.ragione_sociale || '').localeCompare(b.ragione_sociale || ''));
+      return items;
     },
     enabled: !!user,
   });
@@ -60,14 +58,10 @@ export function usePropertyAdmins(propertyId?: string) {
 
   const createAdmin = useMutation({
     mutationFn: async (admin: Omit<PropertyAdmin, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('property_admins')
-        .insert(admin)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: PropertyAdmin & { __table: 'property_admins' } = { __table: 'property_admins', id: crypto.randomUUID(), created_at: now, updated_at: now, ...admin };
+      db.add(item);
+      return item;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['property_admins'] });
@@ -80,15 +74,10 @@ export function usePropertyAdmins(propertyId?: string) {
 
   const updateAdmin = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<PropertyAdmin> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('property_admins')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      db.update(id, { ...updates, updated_at: new Date().toISOString() });
+      const all: unknown[] = db.getAll();
+      const found = all.find((x) => (x as { id: string }).id === id) as PropertyAdmin | undefined;
+      return found as PropertyAdmin;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['property_admins'] });
@@ -101,8 +90,7 @@ export function usePropertyAdmins(propertyId?: string) {
 
   const deleteAdmin = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('property_admins').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['property_admins'] });

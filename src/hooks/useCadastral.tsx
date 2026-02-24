@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -28,29 +28,22 @@ export function useCadastral(unitId?: string) {
     queryKey: ['cadastral_units', unitId],
     queryFn: async () => {
       if (!user || !unitId) return [];
-      
-      const { data, error } = await supabase
-        .from('cadastral_units')
-        .select('*')
-        .eq('unit_id', unitId)
-        .order('tipo_unita');
-      
-      if (error) throw error;
-      return data as CadastralUnit[];
+      const all: unknown[] = db.getAll();
+      const items = all
+        .filter((x) => (x as { __table: string; unit_id: string }).__table === 'cadastral_units' && (x as { unit_id: string }).unit_id === unitId)
+        .map((x) => x as CadastralUnit)
+        .sort((a, b) => (a.tipo_unita || '').localeCompare(b.tipo_unita || ''));
+      return items;
     },
     enabled: !!user && !!unitId,
   });
 
   const createCadastral = useMutation({
     mutationFn: async (cadastral: Omit<CadastralUnit, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('cadastral_units')
-        .insert(cadastral)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: CadastralUnit & { __table: 'cadastral_units' } = { __table: 'cadastral_units', id: crypto.randomUUID(), created_at: now, updated_at: now, ...cadastral };
+      db.add(item);
+      return item;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cadastral_units'] });
@@ -63,15 +56,9 @@ export function useCadastral(unitId?: string) {
 
   const updateCadastral = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<CadastralUnit> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('cadastral_units')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      db.update(id, { ...updates, updated_at: new Date().toISOString() });
+      const found = db.getAll().find((x) => (x as { id: string }).id === id) as CadastralUnit | undefined;
+      return found as CadastralUnit;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cadastral_units'] });
@@ -84,8 +71,7 @@ export function useCadastral(unitId?: string) {
 
   const deleteCadastral = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('cadastral_units').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cadastral_units'] });

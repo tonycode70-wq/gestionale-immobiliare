@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 import { useEffect, useCallback } from 'react';
@@ -26,15 +26,13 @@ export function useNotificationsApp() {
     queryKey: ['notifications', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      
-      if (error) throw error;
-      return data as AppNotification[];
+      const all: unknown[] = db.getAll();
+      const items = all
+        .filter((x) => (x as { __table: string; user_id: string }).__table === 'notifications' && (x as { user_id: string }).user_id === user.id)
+        .map((x) => x as AppNotification)
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        .slice(0, 50);
+      return items;
     },
     enabled: !!user,
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -44,12 +42,7 @@ export function useNotificationsApp() {
 
   const markAsRead = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ letta: true, data_lettura: new Date().toISOString() })
-        .eq('id', id);
-      
-      if (error) throw error;
+      db.update(id, { letta: true, data_lettura: new Date().toISOString() });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -59,14 +52,13 @@ export function useNotificationsApp() {
   const markAllAsRead = useMutation({
     mutationFn: async () => {
       if (!user) return;
-      
-      const { error } = await supabase
-        .from('notifications')
-        .update({ letta: true, data_lettura: new Date().toISOString() })
-        .eq('user_id', user.id)
-        .eq('letta', false);
-      
-      if (error) throw error;
+      const all: unknown[] = db.getAll();
+      const targetIds = all
+        .filter((x) => (x as { __table: string; user_id: string; letta: boolean }).__table === 'notifications'
+          && (x as { user_id: string }).user_id === user.id
+          && !(x as { letta: boolean }).letta)
+        .map((x) => (x as { id: string }).id);
+      targetIds.forEach((id) => db.update(id, { letta: true, data_lettura: new Date().toISOString() }));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -77,15 +69,22 @@ export function useNotificationsApp() {
   const createNotification = useMutation({
     mutationFn: async (notification: Omit<AppNotification, 'id' | 'user_id' | 'letta' | 'data_lettura' | 'created_at'>) => {
       if (!user) throw new Error('Non autenticato');
-      
-      const { data, error } = await supabase
-        .from('notifications')
-        .insert({ ...notification, user_id: user.id })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: AppNotification & { __table: 'notifications' } = {
+        __table: 'notifications',
+        id: crypto.randomUUID(),
+        user_id: user.id,
+        titolo: notification.titolo,
+        tipo: notification.tipo,
+        messaggio: notification.messaggio ?? null,
+        letta: false,
+        data_lettura: null,
+        riferimento_tipo: notification.riferimento_tipo ?? null,
+        riferimento_id: notification.riferimento_id ?? null,
+        created_at: now,
+      };
+      db.add(item);
+      return item;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -94,8 +93,7 @@ export function useNotificationsApp() {
 
   const deleteNotification = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('notifications').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -105,14 +103,13 @@ export function useNotificationsApp() {
   const deleteAllRead = useMutation({
     mutationFn: async () => {
       if (!user) return;
-      
-      const { error } = await supabase
-        .from('notifications')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('letta', true);
-      
-      if (error) throw error;
+      const all: unknown[] = db.getAll();
+      const targetIds = all
+        .filter((x) => (x as { __table: string; user_id: string; letta: boolean }).__table === 'notifications'
+          && (x as { user_id: string }).user_id === user.id
+          && (x as { letta: boolean }).letta)
+        .map((x) => (x as { id: string }).id);
+      targetIds.forEach((id) => db.delete(id));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -123,24 +120,8 @@ export function useNotificationsApp() {
   // Check fiscal deadlines on mount
   const checkFiscalDeadlines = useCallback(async () => {
     if (!user) return;
-    
-    try {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session?.access_token) return;
-
-      const response = await supabase.functions.invoke('check-fiscal-deadlines', {
-        headers: {
-          Authorization: `Bearer ${session.session.access_token}`,
-        },
-      });
-      
-      if (response.data?.notificationsCreated > 0) {
-        queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      }
-    } catch (error) {
-      console.error('Error checking fiscal deadlines:', error);
-    }
-  }, [user, queryClient]);
+    // Simulazione locale: nessuna azione remota
+  }, [user]);
 
   // Check deadlines on mount (riattivato)
   useEffect(() => {

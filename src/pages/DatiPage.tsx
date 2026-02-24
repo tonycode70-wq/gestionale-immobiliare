@@ -21,6 +21,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { TaxCalculatorDialog } from '@/components/taxes/TaxCalculatorDialog';
 import { useGlobalProperty } from '@/hooks/useGlobalProperty';
 import { supabase } from '@/integrations/supabase/client';
+import { BackupManager } from '@/components/BackupManager';
 
 const DatiPage = () => {
   const [searchParams] = useSearchParams();
@@ -107,6 +108,13 @@ const DatiPage = () => {
           <UnitForm trigger={<Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Unità</Button>} />
           <TenantForm trigger={<Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Conduttore</Button>} />
           <LeaseForm trigger={<Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1" />Contratto</Button>} />
+        </div>
+        
+        <div className="mobile-card">
+          <div className="space-y-2">
+            <span className="text-xs text-muted-foreground">Backup dati</span>
+            <BackupManager />
+          </div>
         </div>
         
         <UnitSelector 

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -32,33 +32,25 @@ export function usePayments(leaseId?: string, year?: number) {
     queryKey: ['payments', leaseId, year],
     queryFn: async () => {
       if (!user) return [];
-      
-      let query = supabase.from('payments').select('*');
-      
-      if (leaseId) {
-        query = query.eq('lease_id', leaseId);
-      }
-      if (year) {
-        query = query.eq('competenza_anno', year);
-      }
-      
-      const { data, error } = await query.order('competenza_anno', { ascending: false }).order('competenza_mese', { ascending: false });
-      if (error) throw error;
-      return data as Payment[];
+      const all: unknown[] = db.getAll();
+      let items = all.filter((x) => (x as { __table: string }).__table === 'payments').map((x) => x as Payment);
+      if (leaseId) items = items.filter((x) => x.lease_id === leaseId);
+      if (year) items = items.filter((x) => x.competenza_anno === year);
+      items.sort((a: Payment, b: Payment) => {
+        if (a.competenza_anno !== b.competenza_anno) return b.competenza_anno - a.competenza_anno;
+        return b.competenza_mese - a.competenza_mese;
+      });
+      return items;
     },
     enabled: !!user,
   });
 
   const createPayment = useMutation({
     mutationFn: async (payment: Omit<Payment, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('payments')
-        .insert(payment)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: Payment & { __table: 'payments' } = { __table: 'payments', id: crypto.randomUUID(), created_at: now, updated_at: now, ...payment };
+      db.add(item);
+      return item;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
@@ -71,15 +63,10 @@ export function usePayments(leaseId?: string, year?: number) {
 
   const updatePayment = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Payment> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('payments')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      db.update(id, { ...updates, updated_at: new Date().toISOString() });
+      const all: unknown[] = db.getAll();
+      const found = all.find((x) => (x as { id: string }).id === id) as Payment | undefined;
+      return found as Payment;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
@@ -97,8 +84,8 @@ export function usePayments(leaseId?: string, year?: number) {
       importo_spese_pagato: number;
       data_pagamento: string;
     }) => {
-      const { data: current } = await supabase.from('payments').select('*').eq('id', id).single();
-      if (!current) throw new Error('Pagamento non trovato');
+      const current = db.getAll().find((x) => (x as { id: string }).id === id) as (Payment & { __table?: string }) | undefined;
+      if (!current || current.__table !== 'payments') throw new Error('Pagamento non trovato');
 
       const totalePagato = importo_canone_pagato + importo_spese_pagato;
       const totalePrevisto = current.importo_totale_previsto;
@@ -109,22 +96,16 @@ export function usePayments(leaseId?: string, year?: number) {
         stato = 'PARZIALE';
       }
 
-      const { data, error } = await supabase
-        .from('payments')
-        .update({
-          importo_canone_pagato,
-          importo_spese_pagato,
-          data_pagamento,
-          importo_residuo_calcolato: residuo,
-          stato_pagamento: stato,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      db.update(id, {
+        importo_canone_pagato,
+        importo_spese_pagato,
+        data_pagamento,
+        importo_residuo_calcolato: residuo,
+        stato_pagamento: stato,
+        updated_at: new Date().toISOString(),
+      });
+      const updated = db.getAll().find((x) => (x as { id: string }).id === id) as Payment | undefined;
+      return updated as Payment;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });
@@ -137,8 +118,7 @@ export function usePayments(leaseId?: string, year?: number) {
 
   const deletePayment = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('payments').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments'] });

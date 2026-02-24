@@ -42,7 +42,7 @@ import { useUnits } from '@/hooks/useProperties';
 import { useTenants } from '@/hooks/useTenants';
 import { FileText, Plus, CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../../utils/localStorageDB.js';
 import { useQueryClient } from '@tanstack/react-query';
 
 const leaseSchema = z.object({
@@ -182,7 +182,7 @@ export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
         quota_canone_percentuale: null,
         note: null,
       }));
-      await supabase.from('lease_parties').insert(inserts);
+      inserts.forEach(payload => db.add({ __table: 'lease_parties', id: crypto.randomUUID(), created_at: new Date().toISOString(), ...payload }));
       queryClient.invalidateQueries({ queryKey: ['lease_parties'] });
     }
     

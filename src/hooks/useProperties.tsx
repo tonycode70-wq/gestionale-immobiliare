@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -44,13 +44,12 @@ export function useProperties() {
     queryKey: ['properties', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from('properties')
-        .select('*')
-        .order('nome_complesso');
-      
-      if (error) throw error;
-      return data as Property[];
+      const all: unknown[] = db.getAll();
+      const items = all
+        .filter((x) => (x as { __table: string; user_id: string }).__table === 'properties' && (x as { user_id: string }).user_id === user.id)
+        .map((x) => x as Property);
+      items.sort((a, b) => (a.nome_complesso || '').localeCompare(b.nome_complesso || ''));
+      return items;
     },
     enabled: !!user,
   });
@@ -58,15 +57,10 @@ export function useProperties() {
   const createProperty = useMutation({
     mutationFn: async (property: Omit<Property, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
       if (!user) throw new Error('Non autenticato');
-      
-      const { data, error } = await supabase
-        .from('properties')
-        .insert({ ...property, user_id: user.id })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: Property & { __table: 'properties' } = { __table: 'properties', id: crypto.randomUUID(), user_id: user.id, created_at: now, updated_at: now, ...property };
+      db.add(item);
+      return item as Property;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['properties'] });
@@ -79,15 +73,11 @@ export function useProperties() {
 
   const updateProperty = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Property> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('properties')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const payload = { ...updates, updated_at: new Date().toISOString() };
+      db.update(id, payload);
+      const all: unknown[] = db.getAll();
+      const found = all.find((x) => (x as { id: string }).id === id) as Property | undefined;
+      return found as Property;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['properties'] });
@@ -100,8 +90,7 @@ export function useProperties() {
 
   const deleteProperty = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('properties').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['properties'] });
@@ -124,29 +113,23 @@ export function useUnits(propertyId?: string) {
     queryKey: ['units', propertyId],
     queryFn: async () => {
       if (!user) return [];
-      
-      let query = supabase.from('units').select('*');
+      const all: unknown[] = db.getAll();
+      let items = all.filter((x) => (x as { __table: string }).__table === 'units').map((x) => x as Unit);
       if (propertyId) {
-        query = query.eq('property_id', propertyId);
+        items = items.filter((x) => x.property_id === propertyId);
       }
-      
-      const { data, error } = await query.order('nome_interno');
-      if (error) throw error;
-      return data as Unit[];
+      items.sort((a, b) => (a.nome_interno || '').localeCompare(b.nome_interno || ''));
+      return items;
     },
     enabled: !!user,
   });
 
   const createUnit = useMutation({
     mutationFn: async (unit: Omit<Unit, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('units')
-        .insert(unit)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: Unit & { __table: 'units' } = { __table: 'units', id: crypto.randomUUID(), created_at: now, updated_at: now, ...unit };
+      db.add(item);
+      return item;
     },
     onSuccess: async (created: Unit) => {
       queryClient.invalidateQueries({ queryKey: ['units'] });
@@ -160,15 +143,11 @@ export function useUnits(propertyId?: string) {
 
   const updateUnit = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Unit> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('units')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const payload = { ...updates, updated_at: new Date().toISOString() };
+      db.update(id, payload);
+      const all: unknown[] = db.getAll();
+      const found = all.find((x) => (x as { id: string }).id === id) as Unit | undefined;
+      return found as Unit;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['units'] });
@@ -181,8 +160,7 @@ export function useUnits(propertyId?: string) {
 
   const deleteUnit = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('units').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['units'] });

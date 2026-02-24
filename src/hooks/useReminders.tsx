@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -33,13 +33,12 @@ export function useReminders() {
     queryKey: ['reminders', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from('reminders')
-        .select('*')
-        .order('data_scadenza', { ascending: true });
-      
-      if (error) throw error;
-      return data as Reminder[];
+      const all: unknown[] = db.getAll();
+      const items = all
+        .filter((x) => (x as { __table: string; user_id: string }).__table === 'reminders' && (x as { user_id: string }).user_id === user.id)
+        .map((x) => x as Reminder);
+      items.sort((a, b) => (a.data_scadenza || '').localeCompare(b.data_scadenza || ''));
+      return items;
     },
     enabled: !!user,
   });
@@ -47,15 +46,10 @@ export function useReminders() {
   const createReminder = useMutation({
     mutationFn: async (reminder: Omit<Reminder, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
       if (!user) throw new Error('Non autenticato');
-      
-      const { data, error } = await supabase
-        .from('reminders')
-        .insert({ ...reminder, user_id: user.id })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: Reminder & { __table: 'reminders' } = { __table: 'reminders', id: crypto.randomUUID(), user_id: user.id, created_at: now, updated_at: now, ...reminder };
+      db.add(item);
+      return item;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reminders'] });
@@ -68,15 +62,10 @@ export function useReminders() {
 
   const updateReminder = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Reminder> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('reminders')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      db.update(id, { ...updates, updated_at: new Date().toISOString() });
+      const all: unknown[] = db.getAll();
+      const found = all.find((x) => (x as { id: string }).id === id) as Reminder | undefined;
+      return found as Reminder;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reminders'] });
@@ -89,19 +78,15 @@ export function useReminders() {
 
   const completeReminder = useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await supabase
-        .from('reminders')
-        .update({ 
-          completata: true, 
-          data_completamento: new Date().toISOString().split('T')[0],
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const payload = { 
+        completata: true, 
+        data_completamento: new Date().toISOString().split('T')[0],
+        updated_at: new Date().toISOString() 
+      };
+      db.update(id, payload);
+      const all: unknown[] = db.getAll();
+      const found = all.find((x) => (x as { id: string }).id === id) as Reminder | undefined;
+      return found as Reminder;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reminders'] });
@@ -114,8 +99,7 @@ export function useReminders() {
 
   const deleteReminder = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('reminders').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reminders'] });

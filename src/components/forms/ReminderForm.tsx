@@ -37,7 +37,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../../utils/localStorageDB.js';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/ui/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -102,7 +102,10 @@ export function ReminderForm({ trigger, onSuccess }: ReminderFormProps) {
     
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from('reminders').insert({
+      const now = new Date().toISOString();
+      db.add({
+        __table: 'reminders',
+        id: crypto.randomUUID(),
         user_id: user.id,
         unit_id: data.unit_id && data.unit_id !== 'general' ? data.unit_id : null,
         titolo: data.titolo,
@@ -114,9 +117,9 @@ export function ReminderForm({ trigger, onSuccess }: ReminderFormProps) {
         giorni_anticipo_promemoria: data.giorni_anticipo_promemoria,
         note: data.note || null,
         completata: false,
+        created_at: now,
+        updated_at: now,
       });
-
-      if (error) throw error;
 
       toast({ title: 'Scadenza creata', description: 'La scadenza è stata aggiunta con successo.' });
       queryClient.invalidateQueries({ queryKey: ['reminders'] });

@@ -1,0 +1,64 @@
+PASSO 1: Recupera i dati da Supabase
+Tieni aperta questa scheda e aprine un'altra su Supabase.
+
+Vai nella dashboard del tuo progetto Supabase (Gestione Immobiliare).
+Nel menu a sinistra (in basso), clicca sull'icona dell'ingranaggio (Project Settings).
+Clicca su API.
+Qui ti servono due cose (copiale su un blocco note temporaneo):
+Project URL: (è un indirizzo tipo https://abcdefgh.supabase.co)
+Project API keys (quella che dice anon public): è una stringa lunga di lettere e numeri.
+Quando hai copiato queste due cose, passiamo a GitHub.
+
+PASSO 2: Mettiamo i dati su GitHub
+Ora vai sul tuo progetto (repository) su GitHub dove c'è il codice.
+
+Clicca sulla linguetta in alto Settings (Impostazioni).
+Nel menu laterale sinistro, scendi fino a trovare Secrets and variables, cliccaci e poi seleziona Actions.
+Clicca sul pulsante verde a destra New repository secret.
+Ora creiamo il primo segreto:
+
+Name: Scrivi SUPABASE_URL
+Secret: Incolla l'URL che hai copiato prima (quello che inizia con https://).
+Clicca Add secret.
+Ora creiamo il secondo segreto:
+
+Clicca di nuovo su New repository secret.
+Name: Scrivi SUPABASE_KEY
+Secret: Incolla la chiave lunga (anon public) copiata prima.
+Clicca Add secret.
+Fatto questo, GitHub ora ha le chiavi per entrare nel database.
+
+PASSO 3: Creiamo lo script (il file magico)
+Torniamo alla pagina principale del tuo progetto su GitHub (clicca su Code in alto a sinistra).
+
+Clicca sul pulsante Add file e poi Create new file.
+Nella casella del nome file (in alto), scrivi esattamente questo percorso (compresi i punti e le barre):
+.github/workflows/risveglio.yml
+Nel grande spazio bianco sotto, copia e incolla questo codice:
+YAML
+
+name: Risveglia Supabase
+
+on:
+  schedule:
+    # Ore 08:00 ogni Lunedì e Giovedì (UTC)
+    - cron: '0 8 * * 1,4'
+  workflow_dispatch: # Questo serve per poterlo provare a mano col pulsante
+
+jobs:
+  sveglia_database:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bussata al Database
+        run: |
+          # Sostituisci 'NOME_DELLA_TUA_TABELLA' qui sotto se vuoi, 
+          # ma va bene anche interrogare la radice per svegliarlo.
+          
+          curl -X GET "$SUPABASE_URL/rest/v1/" \
+          -H "apikey: $SUPABASE_KEY" \
+          -H "Authorization: Bearer $SUPABASE_KEY"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+Ora clicca sul pulsante verde in alto a destra Commit changes....
+Clicca ancora su Commit changes nella finestrella che appare.

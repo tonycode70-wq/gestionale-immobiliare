@@ -3,8 +3,11 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { GlobalPropertyProvider } from "@/hooks/useGlobalProperty";
+import { supabase } from "@/integrations/supabase/client";
+import { db } from "../utils/localStorageDB.js";
 import HomePage from "./pages/HomePage";
 import RegistroPage from "./pages/RegistroPage";
 import FinanzePage from "./pages/FinanzePage";
@@ -63,20 +66,61 @@ const AppRoutes = () => (
   </Routes>
 );
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <GlobalPropertyProvider>
-            <AppRoutes />
-          </GlobalPropertyProvider>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const App = () => {
+  const migrateData = async () => {
+    if (typeof window === "undefined") return;
+    const done = window.localStorage.getItem("MIGRATION_DONE");
+    if (done) return;
+    try {
+      const tables = [
+        "properties",
+        "units",
+        "tenants",
+        "leases",
+        "lease_parties",
+        "payments",
+        "notifications",
+        "extra_expenses",
+        "cadastral_units",
+        "reminders",
+        "property_admins",
+        "unit_inventories",
+        "inventory_rooms",
+      ];
+      const results = await Promise.all(
+        tables.map((t) => supabase.from(t).select("*"))
+      );
+      const all = [];
+      results.forEach((res, idx) => {
+        const rows = (res && res.data) ? res.data : [];
+        const name = tables[idx];
+        rows.forEach((r) => all.push({ __table: name, ...r }));
+      });
+      db.replaceAll(all);
+      window.localStorage.setItem("MIGRATION_DONE", "true");
+      window.alert("Migrazione completata");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+  useEffect(() => {
+    migrateData();
+  }, []);
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AuthProvider>
+            <GlobalPropertyProvider>
+              <AppRoutes />
+            </GlobalPropertyProvider>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

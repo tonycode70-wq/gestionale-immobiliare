@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -33,13 +33,12 @@ export function useTenants() {
     queryKey: ['tenants', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from('tenants')
-        .select('*')
-        .order('cognome');
-      
-      if (error) throw error;
-      return data as Tenant[];
+      const all: unknown[] = db.getAll();
+      const items = all
+        .filter((x) => (x as { __table: string; user_id: string }).__table === 'tenants' && (x as { user_id: string }).user_id === user.id)
+        .map((x) => x as Tenant);
+      items.sort((a, b) => (a.cognome || '').localeCompare(b.cognome || ''));
+      return items;
     },
     enabled: !!user,
   });
@@ -47,15 +46,10 @@ export function useTenants() {
   const createTenant = useMutation({
     mutationFn: async (tenant: Omit<Tenant, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
       if (!user) throw new Error('Non autenticato');
-      
-      const { data, error } = await supabase
-        .from('tenants')
-        .insert({ ...tenant, user_id: user.id })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: Tenant & { __table: 'tenants' } = { __table: 'tenants', id: crypto.randomUUID(), user_id: user.id, created_at: now, updated_at: now, ...tenant };
+      db.add(item);
+      return item;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
@@ -68,15 +62,11 @@ export function useTenants() {
 
   const updateTenant = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Tenant> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('tenants')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const payload = { ...updates, updated_at: new Date().toISOString() };
+      db.update(id, payload);
+      const all: unknown[] = db.getAll();
+      const found = all.find((x) => (x as { id: string }).id === id) as Tenant | undefined;
+      return found as Tenant;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
@@ -89,8 +79,7 @@ export function useTenants() {
 
   const deleteTenant = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('tenants').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });

@@ -1,5 +1,4 @@
 import { useMutation } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 
 interface SendNotificationParams {
@@ -18,21 +17,7 @@ export function useNotifications() {
 
   const sendNotification = useMutation({
     mutationFn: async (params: SendNotificationParams) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        throw new Error('Non autenticato');
-      }
-
-      const response = await supabase.functions.invoke('send-notification', {
-        body: params,
-      });
-
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      return response.data;
+      return { success: true, message: 'Notifica simulata in locale' };
     },
     onSuccess: (data) => {
       if (data.success) {

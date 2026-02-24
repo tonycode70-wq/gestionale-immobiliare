@@ -17,7 +17,7 @@ import { useTenants } from '@/hooks/useTenants';
 import { useAuth } from '@/hooks/useAuth';
 import { ExpenseForm } from '@/components/forms/ExpenseForm';
 import { PaymentForm } from '@/components/forms/PaymentForm';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import type { Tenant } from '@/types';
 import { useGlobalProperty } from '@/hooks/useGlobalProperty';
 
@@ -52,14 +52,18 @@ const RegistroPage = () => {
         return;
       }
       const leaseIds = leases.map(l => l.id);
-      const { data } = await supabase
-        .from('lease_parties')
-        .select('*, tenant:tenants(*)')
-        .in('lease_id', leaseIds)
-        .eq('ruolo', 'intestatario');
+      const all: unknown[] = db.getAll();
+      const parties = all
+        .filter((x) => (x as { __table: string; ruolo: string; lease_id: string }).__table === 'lease_parties'
+          && (x as { ruolo: string }).ruolo === 'intestatario'
+          && leaseIds.includes((x as { lease_id: string }).lease_id))
+        .map((x) => x as { lease_id: string; tenant_id: string });
+      const tenantsAll = all.filter((x) => (x as { __table: string }).__table === 'tenants').map((x) => x as Tenant);
       const map: Record<string, Tenant | undefined> = {};
-      const rows = (data ?? []) as Array<{ lease_id: string; tenant: Tenant }>;
-      rows.forEach(p => { map[p.lease_id] = p.tenant; });
+      parties.forEach((p) => {
+        const t = tenantsAll.find((tt) => tt.id === p.tenant_id);
+        map[p.lease_id] = t;
+      });
       setLeaseTenantMap(map);
     };
     fetchParties();

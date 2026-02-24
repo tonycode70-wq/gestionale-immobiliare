@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -21,26 +21,22 @@ export function useInventoryRooms(unitId?: string) {
     queryKey: ['inventory_rooms', unitId],
     queryFn: async () => {
       if (!user || !unitId) return [];
-      const { data, error } = await supabase
-        .from('inventory_rooms')
-        .select('*')
-        .eq('unit_id', unitId)
-        .order('ordine_visualizzazione', { ascending: true });
-      if (error) throw error;
-      return data as InventoryRoom[];
+      const all: unknown[] = db.getAll();
+      const items = all
+        .filter((x) => (x as { __table: string; unit_id: string }).__table === 'inventory_rooms' && (x as { unit_id: string }).unit_id === unitId)
+        .map((x) => x as InventoryRoom)
+        .sort((a, b) => (a.ordine_visualizzazione || 0) - (b.ordine_visualizzazione || 0));
+      return items;
     },
     enabled: !!user && !!unitId,
   });
 
   const createRoom = useMutation({
     mutationFn: async (payload: Omit<InventoryRoom, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('inventory_rooms')
-        .insert(payload)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const created: InventoryRoom & { __table: 'inventory_rooms' } = { __table: 'inventory_rooms', id: crypto.randomUUID(), created_at: now, updated_at: now, ...payload };
+      db.add(created);
+      return created;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory_rooms'] });
@@ -53,14 +49,9 @@ export function useInventoryRooms(unitId?: string) {
 
   const updateRoom = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<InventoryRoom> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('inventory_rooms')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+      db.update(id, { ...updates, updated_at: new Date().toISOString() });
+      const found = db.getAll().find((x) => (x as { id: string }).id === id) as InventoryRoom | undefined;
+      return found as InventoryRoom;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory_rooms'] });
@@ -73,8 +64,7 @@ export function useInventoryRooms(unitId?: string) {
 
   const deleteRoom = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('inventory_rooms').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory_rooms'] });

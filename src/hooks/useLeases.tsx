@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { db } from '../../utils/localStorageDB.js';
 import { useAuth } from './useAuth';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -50,29 +50,23 @@ export function useLeases(unitId?: string) {
     queryKey: ['leases', unitId],
     queryFn: async () => {
       if (!user) return [];
-      
-      let query = supabase.from('leases').select('*');
+      const all: unknown[] = db.getAll();
+      let items = all.filter((x) => (x as { __table: string }).__table === 'leases').map((x) => x as Lease);
       if (unitId) {
-        query = query.eq('unit_id', unitId);
+        items = items.filter((x) => x.unit_id === unitId);
       }
-      
-      const { data, error } = await query.order('data_inizio', { ascending: false });
-      if (error) throw error;
-      return data as Lease[];
+      items.sort((a, b) => (b.data_inizio || '').localeCompare(a.data_inizio || ''));
+      return items;
     },
     enabled: !!user,
   });
 
   const createLease = useMutation({
     mutationFn: async (lease: Omit<Lease, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data, error } = await supabase
-        .from('leases')
-        .insert(lease)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const now = new Date().toISOString();
+      const item: Lease & { __table: 'leases' } = { __table: 'leases', id: crypto.randomUUID(), created_at: now, updated_at: now, ...lease };
+      db.add(item);
+      return item;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leases'] });
@@ -85,15 +79,11 @@ export function useLeases(unitId?: string) {
 
   const updateLease = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Lease> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('leases')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const payload = { ...updates, updated_at: new Date().toISOString() };
+      db.update(id, payload);
+      const all: unknown[] = db.getAll();
+      const found = all.find((x) => (x as { id: string }).id === id) as Lease | undefined;
+      return found as Lease;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leases'] });
@@ -106,8 +96,7 @@ export function useLeases(unitId?: string) {
 
   const deleteLease = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('leases').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leases'] });
@@ -130,28 +119,22 @@ export function useLeaseParties(leaseId?: string) {
     queryKey: ['lease_parties', leaseId],
     queryFn: async () => {
       if (!user || !leaseId) return [];
-      
-      const { data, error } = await supabase
-        .from('lease_parties')
-        .select('*, tenant:tenants(*)')
-        .eq('lease_id', leaseId);
-      
-      if (error) throw error;
-      return data;
+      const all: unknown[] = db.getAll();
+      const parties = all
+        .filter((x) => (x as { __table: string; lease_id: string }).__table === 'lease_parties' && (x as { lease_id: string }).lease_id === leaseId)
+        .map((x) => x as LeaseParty);
+      const tenants = all.filter((x) => (x as { __table: string }).__table === 'tenants').map((x) => x as { id: string } & Record<string, unknown>);
+      const joined = parties.map((p) => ({ ...p, tenant: tenants.find((t) => t.id === p.tenant_id) || null }));
+      return joined as (LeaseParty & { tenant: Record<string, unknown> | null })[];
     },
     enabled: !!user && !!leaseId,
   });
 
   const createLeaseParty = useMutation({
     mutationFn: async (party: Omit<LeaseParty, 'id' | 'created_at'>) => {
-      const { data, error } = await supabase
-        .from('lease_parties')
-        .insert(party)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
+      const item: LeaseParty & { __table: 'lease_parties' } = { __table: 'lease_parties', id: crypto.randomUUID(), created_at: new Date().toISOString(), ...party };
+      db.add(item);
+      return item as LeaseParty;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lease_parties'] });
@@ -164,8 +147,7 @@ export function useLeaseParties(leaseId?: string) {
 
   const deleteLeaseParty = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('lease_parties').delete().eq('id', id);
-      if (error) throw error;
+      db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lease_parties'] });
