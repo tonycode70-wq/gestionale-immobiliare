@@ -26,6 +26,12 @@ export interface Lease {
   primo_anno_locazione: boolean;
   estremi_registrazione: string | null;
   modello_rli_protocollo: string | null;
+  garante_tipo: 'persona_fisica' | 'persona_giuridica' | null;
+  garante_nome: string | null;
+  garante_codice_fiscale: string | null;
+  fideiussione_bancaria: boolean | null;
+  fideiussione_dettagli: string | null;
+  garanzie_altre: string | null;
   note: string | null;
   created_at: string;
   updated_at: string;
@@ -66,6 +72,8 @@ export function useLeases(unitId?: string) {
       const now = new Date().toISOString();
       const item: Lease & { __table: 'leases' } = { __table: 'leases', id: crypto.randomUUID(), created_at: now, updated_at: now, ...lease };
       db.add(item);
+      const ok = db.verifyItem(item.id);
+      if (!ok) throw new Error('Errore di salvataggio contratto');
       return item;
     },
     onSuccess: () => {

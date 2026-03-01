@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '@/components/layout';
 import { UnitSelector } from '@/components/common';
 import { FinancialSummaryCard, PropertyCard, ReminderList, TodayPayments } from '@/components/home';
+import { SyncIndicator } from '@/components/SyncIndicator';
 import { enrichReminder, formatCurrency } from '@/lib/propertyUtils';
+import { useCadastral } from '@/hooks/useCadastral';
 import { useProperties, useUnits } from '@/hooks/useProperties';
 import { useLeases } from '@/hooks/useLeases';
 import { useTenants } from '@/hooks/useTenants';
 import { usePayments } from '@/hooks/usePayments';
 import { useReminders } from '@/hooks/useReminders';
+import { useExpenses } from '@/hooks/useExpenses';
 import { useAuth } from '@/hooks/useAuth';
 import type { ReminderWithContext, Reminder, Payment, Lease, Tenant, Unit } from '@/types';
 import { Loader2 } from 'lucide-react';
@@ -30,8 +33,9 @@ const HomePage = () => {
   const { leases, isLoading: loadingLeases } = useLeases();
   const { tenants, isLoading: loadingTenants } = useTenants();
   const { payments, isLoading: loadingPayments } = usePayments(undefined, currentYear);
+  const { expenses } = useExpenses(undefined, currentYear);
   const { reminders, isLoading: loadingReminders, completeReminder } = useReminders();
-  const { selectedPropertyId } = useGlobalProperty();
+  const { selectedPropertyId, setSelectedPropertyId, setSelection } = useGlobalProperty();
 
   const isLoading = loadingProperties || loadingUnits || loadingLeases || loadingTenants || loadingPayments || loadingReminders;
 
@@ -191,6 +195,52 @@ const HomePage = () => {
     });
   }, [units, properties, selectedPropertyId]);
 
+  const selectedLease = useMemo(() => {
+    if (selectedUnit === 'all') return null;
+    return leases.find(l => l.unit_id === selectedUnit) || null;
+  }, [leases, selectedUnit]);
+  const { cadastralUnits } = useCadastral(selectedUnit === 'all' ? undefined : selectedUnit);
+
+  const monthsStatusForSelected = useMemo(() => {
+    if (selectedUnit === 'all') return [];
+    const lease = selectedLease;
+    const arr: Array<'paid'|'missing'|'future'> = [];
+    const year = currentYear;
+    const start = lease ? new Date(lease.data_inizio) : null;
+    const end = lease ? new Date(lease.data_fine) : null;
+    const unitPayments = payments.filter(p => p.lease_id === (lease?.id || '') && p.competenza_anno === year);
+    for (let m = 1; m <= 12; m++) {
+      const inContract = !!(start && end) && new Date(year, m - 1, 15) >= start! && new Date(year, m - 1, 15) <= end!;
+      if (!inContract) {
+        arr.push('future');
+        continue;
+      }
+      const pmt = unitPayments.find(p => p.competenza_mese === m);
+      if (pmt && pmt.stato_pagamento === 'PAGATO') {
+        arr.push('paid');
+      } else if (m <= currentMonth) {
+        arr.push('missing');
+      } else {
+        arr.push('future');
+      }
+    }
+    return arr;
+  }, [selectedUnit, selectedLease, payments, currentYear, currentMonth]);
+
+  const monthlyAmountsForSelected = useMemo(() => {
+    if (selectedUnit === 'all') return [];
+    const lease = selectedLease;
+    const year = currentYear;
+    const unitPayments = payments.filter(p => p.lease_id === (lease?.id || '') && p.competenza_anno === year);
+    const arr: number[] = [];
+    for (let m = 1; m <= 12; m++) {
+      const pmt = unitPayments.find(p => p.competenza_mese === m);
+      const importo = (pmt?.importo_canone_pagato || 0) + (pmt?.importo_spese_pagato || 0);
+      arr.push(importo);
+    }
+    return arr;
+  }, [selectedUnit, selectedLease, payments, currentYear]);
+
   if (isLoading) {
     return (
       <AppLayout title="Home">
@@ -204,6 +254,7 @@ const HomePage = () => {
   return (
     <AppLayout title="Home">
       <div className="space-y-4">
+        <div className="flex items-center justify-end"><SyncIndicator /></div>
         {/* Unit Selector */}
         <UnitSelector 
           value={selectedUnit} 
@@ -214,12 +265,81 @@ const HomePage = () => {
         {/* Financial Summary Card */}
         <FinancialSummaryCard
           year={currentYear}
-          nettoReale={financialSummary.nettoReale}
+          nettoReale={(selectedLease && selectedUnit !== 'all')
+            ? (() => {
+                const l = selectedLease!;
+                const aliquota = l.regime_locativo === 'cedolare_21' ? 0.21 : (l.regime_locativo === 'cedolare_10' ? 0.10 : 0);
+                const cedolareMensile = Math.round(l.canone_mensile * aliquota * 100) / 100;
+                const imuMensile = (() => {
+                  if (!cadastralUnits || cadastralUnits.length === 0) return 0;
+                  const renditaTot = cadastralUnits.reduce((s, cu) => s + cu.rendita_euro, 0);
+                  const baseImp = renditaTot * 1.05 * 160;
+                  const imuAnnua = Math.round(baseImp * (10.6 / 1000) * 100) / 100;
+                  return Math.round((imuAnnua / 12) * 100) / 100;
+                })();
+                const spese = l.spese_condominiali_mensili_previste || 0;
+                const speseStraordMensili = expenses
+                  .filter(e => e.unit_id === selectedUnit && (() => {
+                    const d = new Date(e.data_competenza);
+                    return d.getFullYear() === currentYear && d.getMonth() + 1 === currentMonth;
+                  })())
+                  .reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
+                return Math.round((l.canone_mensile - cedolareMensile - spese - imuMensile - speseStraordMensili) * 100) / 100;
+              })()
+            : financialSummary.nettoReale}
           incassoMensePrevisto={financialSummary.incassoPrevisto}
           incassoMeseEffettivo={financialSummary.incassoEffettivo}
           prossimaScadenza={prossimaScadenza}
           lordoMensile={financialSummary.lordoMensile}
           meseCorrenteRegistrato={financialSummary.meseCompleto}
+          monthsStatus={monthsStatusForSelected}
+          monthlyAmounts={monthlyAmountsForSelected}
+          unitsMenu={unitOptions}
+          selectedUnitId={selectedUnit === 'all' ? undefined : selectedUnit}
+          onSelectUnit={(id) => {
+            setSelectedUnit(id);
+            const unit = units.find(u => u.id === id);
+            if (unit) {
+              setSelectedPropertyId(unit.property_id);
+              setSelection(unit.property_id, id);
+            }
+          }}
+          cedolareMensile={(selectedLease && selectedUnit !== 'all') ? (() => {
+            const l = selectedLease!;
+            const rate = l.regime_locativo === 'cedolare_21' ? 0.21 : (l.regime_locativo === 'cedolare_10' ? 0.10 : 0);
+            return Math.round(l.canone_mensile * rate * 100) / 100;
+          })() : 0}
+          imuMensile={(selectedUnit !== 'all' && cadastralUnits && cadastralUnits.length > 0) ? (() => {
+            const renditaTot = cadastralUnits.reduce((s, cu) => s + cu.rendita_euro, 0);
+            const baseImp = renditaTot * 1.05 * 160;
+            const imuAnnua = Math.round(baseImp * (10.6 / 1000) * 100) / 100;
+            return Math.round((imuAnnua / 12) * 100) / 100;
+          })() : 0}
+          speseMensili={(selectedLease && selectedUnit !== 'all') ? (selectedLease.spese_condominiali_mensili_previste || 0) : 0}
+          proiezioneNettoAnnua={(selectedLease && selectedUnit !== 'all') ? (() => {
+            const l = selectedLease!;
+            const startY = new Date(l.data_inizio).getFullYear();
+            const endY = new Date(l.data_fine).getFullYear();
+            const annoContratto = currentYear - startY + 1;
+            const aliquota = l.regime_locativo === 'cedolare_21' ? 0.21 : (l.regime_locativo === 'cedolare_10' ? 0.10 : 0);
+            const cedolareMensile = (annoContratto === 1) ? 0 : Math.round(l.canone_mensile * aliquota * 100) / 100;
+            const monthsActive = (() => {
+              let m = 0;
+              for (let month = 1; month <= 12; month++) {
+                const mid = new Date(currentYear, month - 1, 15);
+                if (mid >= new Date(l.data_inizio) && mid <= new Date(l.data_fine)) m++;
+              }
+              return m;
+            })();
+            const renditaTot = (cadastralUnits || []).reduce((s, cu) => s + cu.rendita_euro, 0);
+            const baseImp = renditaTot * 1.05 * 160;
+            const imuAnnua = Math.round(baseImp * (10.6 / 1000) * 100) / 100;
+            const speseStraordAnnua = expenses
+              .filter(e => e.unit_id === selectedUnit && new Date(e.data_competenza).getFullYear() === currentYear)
+              .reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
+            const canoneMensileNetto = l.canone_mensile - cedolareMensile;
+            return Math.round(((canoneMensileNetto * monthsActive) - imuAnnua - speseStraordAnnua) * 100) / 100;
+          })() : 0}
         />
 
         {/* Property Cards */}
@@ -234,14 +354,42 @@ const HomePage = () => {
             filteredData.units.map(unit => {
               const lease = filteredData.leases.find(l => l.unit_id === unit.id);
               const tenant = lease ? leaseTenantMap[lease.id] : undefined;
-              
+              const monthsStatus = (() => {
+                const arr: Array<'paid'|'missing'|'future'> = [];
+                const year = currentYear;
+                const start = lease ? new Date(lease.data_inizio) : null;
+                const end = lease ? new Date(lease.data_fine) : null;
+                const unitPayments = payments.filter(p => p.lease_id === (lease?.id || '') && p.competenza_anno === year);
+                for (let m = 1; m <= 12; m++) {
+                  const inContract = !!(start && end) && new Date(year, m - 1, 15) >= start! && new Date(year, m - 1, 15) <= end!;
+                  if (!inContract) {
+                    arr.push('future');
+                    continue;
+                  }
+                  const pmt = unitPayments.find(p => p.competenza_mese === m);
+                  if (pmt && pmt.stato_pagamento === 'PAGATO') {
+                    arr.push('paid');
+                  } else if (m <= currentMonth) {
+                    arr.push('missing');
+                  } else {
+                    arr.push('future');
+                  }
+                }
+                return arr;
+              })();
               return (
                 <PropertyCard
                   key={unit.id}
                   unit={unit as unknown as Unit}
                   lease={lease as unknown as Lease}
                   tenant={tenant as Tenant | undefined}
-                  onClick={() => navigate(`/dati?unit=${unit.id}`)}
+                  monthsStatus={monthsStatus}
+                  onClick={() => {
+                    setSelectedPropertyId(unit.property_id);
+                    setSelection(unit.property_id, unit.id);
+                    localStorage.setItem('active_unit_id', unit.id);
+                    navigate(`/dati?unit=${unit.id}`);
+                  }}
                 />
               );
             })

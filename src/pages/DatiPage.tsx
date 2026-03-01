@@ -11,6 +11,9 @@ import { PropertyForm, UnitForm, TenantForm, LeaseForm } from '@/components/form
 import { CadastralForm } from '@/components/forms/CadastralForm';
 import { AdminForm } from '@/components/forms/AdminForm';
 import { InventoryForm } from '@/components/forms/InventoryForm';
+import { NoteForm } from '@/components/forms/NoteForm';
+import { useNotes } from '@/hooks/useNotes';
+import { RelationsGraph } from '@/components/relations/RelationsGraph';
 import { useProperties, useUnits } from '@/hooks/useProperties';
 import { useLeases, useLeaseParties } from '@/hooks/useLeases';
 import { useTenants } from '@/hooks/useTenants';
@@ -20,8 +23,8 @@ import { useInventory } from '@/hooks/useInventory';
 import { useAuth } from '@/hooks/useAuth';
 import { TaxCalculatorDialog } from '@/components/taxes/TaxCalculatorDialog';
 import { useGlobalProperty } from '@/hooks/useGlobalProperty';
-import { supabase } from '@/integrations/supabase/client';
 import { BackupManager } from '@/components/BackupManager';
+import { MaintenanceActions } from '@/components/MaintenanceActions';
 
 const DatiPage = () => {
   const [searchParams] = useSearchParams();
@@ -69,6 +72,7 @@ const DatiPage = () => {
 
   // Fetch inventory for selected unit
   const { inventoryItems, isLoading: loadingInventory } = useInventory(unit?.id);
+  const { notes, isLoading: loadingNotes, deleteNote } = useNotes(unit?.id, property?.id);
 
   const groupedInventory = useMemo(() => {
     return inventoryItems.reduce((acc, item) => {
@@ -114,6 +118,7 @@ const DatiPage = () => {
           <div className="space-y-2">
             <span className="text-xs text-muted-foreground">Backup dati</span>
             <BackupManager />
+            <MaintenanceActions />
           </div>
         </div>
         
@@ -122,6 +127,8 @@ const DatiPage = () => {
           onChange={setSelectedUnit}
           units={unitOptions}
         />
+
+        <RelationsGraph />
 
         {!unit && units.length === 0 ? (
           <div className="mobile-card text-center py-8">
@@ -198,6 +205,11 @@ const DatiPage = () => {
                 <div className="mobile-card">
                   <div className="flex justify-between items-start mb-3">
                     <h3 className="font-semibold text-foreground">Dati contratto</h3>
+                    <LeaseForm 
+                      lease={lease}
+                      unitId={unit.id}
+                      trigger={<Button size="sm" variant="ghost"><Pencil className="h-4 w-4" /></Button>}
+                    />
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span className="text-muted-foreground">Tipo</span><span>{getContractTypeLabel(lease.tipo_contratto)}</span></div>
@@ -450,6 +462,48 @@ const DatiPage = () => {
                   )}
                 </>
               )}
+            </TabsContent>
+
+            {/* NOTE TAB (integrata sotto Catasto) */}
+            <TabsContent value="catasto" className="space-y-4 mt-2">
+              <div className="mobile-card">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-foreground">Note dell'Unità</h3>
+                  <NoteForm unitId={unit.id} propertyId={property?.id || undefined} />
+                </div>
+                {loadingNotes ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  </div>
+                ) : notes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nessuna nota registrata</p>
+                ) : (
+                  <div className="space-y-2">
+                    {notes.map(n => (
+                      <NoteForm
+                        key={n.id}
+                        note={n}
+                        unitId={unit.id}
+                        propertyId={property?.id || undefined}
+                        trigger={
+                          <div className="p-3 rounded-lg bg-muted/40 hover:bg-muted/50 cursor-pointer">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium">{n.titolo}</p>
+                                {n.data_nota && <p className="text-xs text-muted-foreground">{n.data_nota}</p>}
+                              </div>
+                              <Button size="sm" variant="ghost"><Pencil className="h-4 w-4" /></Button>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                              {n.contenuto}
+                            </p>
+                          </div>
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </TabsContent>
 
             {/* ADMIN TAB */}

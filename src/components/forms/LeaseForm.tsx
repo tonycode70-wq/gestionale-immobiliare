@@ -64,6 +64,12 @@ const leaseSchema = z.object({
   stato_contratto: z.enum(['in_preparazione', 'attivo', 'cessato', 'rinnovato', 'contenzioso']),
   primo_anno_locazione: z.boolean().default(true),
   estremi_registrazione: z.string().max(100).optional().nullable(),
+  garante_tipo: z.enum(['persona_fisica', 'persona_giuridica']).optional().nullable(),
+  garante_nome: z.string().max(100).optional().nullable(),
+  garante_codice_fiscale: z.string().max(20).optional().nullable(),
+  fideiussione_bancaria: z.boolean().optional().nullable(),
+  fideiussione_dettagli: z.string().max(500).optional().nullable(),
+  garanzie_altre: z.string().max(500).optional().nullable(),
   note: z.string().max(1000).optional().nullable(),
 }).refine((data) => data.data_fine > data.data_inizio, {
   message: 'La data di fine deve essere successiva alla data di inizio',
@@ -136,6 +142,12 @@ export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
       stato_contratto: 'in_preparazione',
       primo_anno_locazione: true,
       estremi_registrazione: '',
+      garante_tipo: undefined,
+      garante_nome: '',
+      garante_codice_fiscale: '',
+      fideiussione_bancaria: false,
+      fideiussione_dettagli: '',
+      garanzie_altre: '',
       note: '',
     },
   });
@@ -170,6 +182,12 @@ export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
       primo_anno_locazione: data.primo_anno_locazione,
       estremi_registrazione: data.estremi_registrazione || null,
       modello_rli_protocollo: null,
+      garante_tipo: data.garante_tipo || null,
+      garante_nome: data.garante_nome || null,
+      garante_codice_fiscale: data.garante_codice_fiscale || null,
+      fideiussione_bancaria: !!data.fideiussione_bancaria,
+      fideiussione_dettagli: data.fideiussione_dettagli || null,
+      garanzie_altre: data.garanzie_altre || null,
       note: data.note || null,
     });
 
@@ -590,6 +608,99 @@ export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
                   <FormControl>
                     <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="garante_tipo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Garante</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ''}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Tipo garante" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="persona_fisica">Persona Fisica</SelectItem>
+                        <SelectItem value="persona_giuridica">Persona Giuridica</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="garante_nome"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome/Ragione sociale Garante</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Nome/Ragione sociale" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="garante_codice_fiscale"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Codice Fiscale/P.IVA Garante</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="CF/P.IVA garante" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="fideiussione_bancaria"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel>Fideiussione Bancaria</FormLabel>
+                    </div>
+                    <FormControl>
+                      <Switch checked={!!field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="fideiussione_dettagli"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dettagli Fideiussione</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="Durata, importo, normativa..." />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="garanzie_altre"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Altre Garanzie</FormLabel>
+                  <FormControl>
+                    <Textarea {...field} rows={2} placeholder="Descrizione altre garanzie..." />
+                  </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />

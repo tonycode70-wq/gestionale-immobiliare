@@ -8,15 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useTenants } from '@/hooks/useTenants';
+import { UnitTechSheetPreview } from '@/components/report/UnitTechSheetPreview';
 
 interface PropertyCardProps {
   unit: Unit;
   lease?: Lease;
   tenant?: Tenant;
+  monthsStatus?: Array<'paid' | 'missing' | 'future'>;
   onClick?: () => void;
 }
 
-export function PropertyCard({ unit, lease, tenant, onClick }: PropertyCardProps) {
+export function PropertyCard({ unit, lease, tenant, monthsStatus, onClick }: PropertyCardProps) {
   const daysRemaining = lease ? getDaysRemaining(lease.data_fine) : null;
   const progress = lease ? getContractProgress(lease.data_inizio, lease.data_fine) : 0;
   const { updateTenant } = useTenants();
@@ -115,6 +117,20 @@ export function PropertyCard({ unit, lease, tenant, onClick }: PropertyCardProps
                 <Mail className="h-4 w-4 text-primary" />
               </a>
             )}
+            <UnitTechSheetPreview
+              unitId={unit.id}
+              trigger={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ml-1"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Scarica Scheda Tecnica"
+                >
+                  <FileText className="h-4 w-4" />
+                </Button>
+              }
+            />
           </div>
           <Button
             variant="ghost"
@@ -242,6 +258,22 @@ export function PropertyCard({ unit, lease, tenant, onClick }: PropertyCardProps
               <span className="font-medium">{getRegimeLabel(lease.regime_locativo)}</span>
             </div>
           </div>
+
+          {monthsStatus && monthsStatus.length === 12 && (
+            <div className="grid grid-cols-12 gap-0.5 mb-3">
+              {monthsStatus.map((st, idx) => (
+                <div
+                  key={`m-${idx}`}
+                  className={cn(
+                    'h-3 rounded-[3px] border',
+                    st === 'paid' ? 'bg-green-500 border-green-600' : st === 'missing' ? 'bg-red-500 border-red-600' : 'bg-gray-400 border-gray-500'
+                  )}
+                  aria-label={st}
+                  title={`Mese ${idx + 1}: ${st}`}
+                />
+              ))}
+            </div>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">

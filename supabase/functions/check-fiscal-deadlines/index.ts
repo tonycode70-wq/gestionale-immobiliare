@@ -1,12 +1,24 @@
- import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
- import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
- 
- const corsHeaders = {
-   "Access-Control-Allow-Origin": "*",
-   "Access-Control-Allow-Headers":
-     "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
- };
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const allowedOrigins = [
+  "https://moonlit-raindrop-9d3061.netlify.app",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
+function buildCorsHeaders(origin?: string) {
+  const allowOrigin =
+    origin && allowedOrigins.includes(origin) ? origin : "*";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Credentials": "true",
+    "Vary": "Origin",
+  };
+}
  
  interface FiscalDeadline {
    type: 'IMU_ACCONTO' | 'IMU_SALDO' | 'CEDOLARE_ACCONTO_1' | 'CEDOLARE_ACCONTO_2' | 'CEDOLARE_SALDO';
@@ -15,9 +27,10 @@
    daysUntil: number;
  }
  
- const handler = async (req: Request): Promise<Response> => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+const handler = async (req: Request): Promise<Response> => {
+  const cors = buildCorsHeaders(req.headers.get("origin") || undefined);
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: cors });
   }
  
    try {
@@ -36,10 +49,10 @@
      const token = authHeader.replace("Bearer ", "");
      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
      
-     if (authError || !user) {
+    if (authError || !user) {
        return new Response(JSON.stringify({ error: "Unauthorized" }), {
          status: 401,
-         headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
        });
      }
  
@@ -146,16 +159,20 @@
        }),
        {
          status: 200,
-         headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
        }
      );
-   } catch (error: any) {
+  } catch (error: unknown) {
      console.error("Error in check-fiscal-deadlines:", error);
+    const message =
+      error && typeof error === "object" && "message" in error
+        ? String((error as { message: string }).message)
+        : "Unknown error";
      return new Response(
-       JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: message }),
        {
          status: 500,
-         headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
        }
      );
    }

@@ -1,6 +1,7 @@
 import { TrendingUp, TrendingDown, Calendar, AlertCircle, Euro } from 'lucide-react';
 import { formatCurrency, formatDate, getDaysRemaining } from '@/lib/propertyUtils';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 interface FinancialSummaryCardProps {
   year: number;
@@ -10,6 +11,15 @@ interface FinancialSummaryCardProps {
   prossimaScadenza?: { titolo: string; data: string };
   lordoMensile: number;
   meseCorrenteRegistrato: boolean;
+  monthsStatus?: Array<'paid' | 'missing' | 'future'>;
+  monthlyAmounts?: number[];
+  unitsMenu?: Array<{ id: string; nome_interno: string; property_name?: string }>;
+  selectedUnitId?: string;
+  onSelectUnit?: (unitId: string) => void;
+  cedolareMensile?: number;
+  imuMensile?: number;
+  speseMensili?: number;
+  proiezioneNettoAnnua?: number;
 }
 
 export function FinancialSummaryCard({
@@ -20,14 +30,46 @@ export function FinancialSummaryCard({
   prossimaScadenza,
   lordoMensile,
   meseCorrenteRegistrato,
+  monthsStatus = [],
+  monthlyAmounts = [],
+  unitsMenu = [],
+  selectedUnitId,
+  onSelectUnit,
+  cedolareMensile = 0,
+  imuMensile = 0,
+  speseMensili = 0,
+  proiezioneNettoAnnua = 0,
 }: FinancialSummaryCardProps) {
   const incassoCompleto = incassoMeseEffettivo >= incassoMensePrevisto;
   const giorni = prossimaScadenza ? getDaysRemaining(prossimaScadenza.data) : null;
 
   return (
     <div className="financial-card">
+      {unitsMenu.length > 0 && onSelectUnit && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/70">Unità attiva</span>
+            <span className="text-xs text-white/50">Esercizio {year}</span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto py-2 scrollbar-hide">
+            {unitsMenu.map(u => (
+              <button
+                key={u.id}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs',
+                  selectedUnitId === u.id ? 'bg-white/20 text-white' : 'bg-white/10 text-white/70'
+                )}
+                onClick={() => onSelectUnit(u.id)}
+                title={`${u.property_name || ''} • ${u.nome_interno}`}
+              >
+                {u.nome_interno}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-4">
-        <span className="text-sm text-white/70">Esercizio {year}</span>
+        <span className="text-sm text-white/70">Pannello di controllo</span>
         <div className="flex items-center gap-1">
           {nettoReale >= 0 ? (
             <TrendingUp className="h-4 w-4 text-green-300" />
@@ -41,7 +83,22 @@ export function FinancialSummaryCard({
         {/* Netto Reale */}
         <div className="financial-card-inner">
           <div className="flex justify-between items-center">
-            <span className="text-xs text-white/60 uppercase tracking-wider">Netto Reale Mese</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/60 uppercase tracking-wider">Netto Reale Mese</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-white/60 text-xs cursor-help">ℹ️</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="space-y-1">
+                    <div className="flex justify-between"><span>Cedolare</span><span>{formatCurrency(cedolareMensile)}</span></div>
+                    <div className="flex justify-between"><span>IMU (pro-quota)</span><span>{formatCurrency(imuMensile)}</span></div>
+                    <div className="flex justify-between"><span>Spese cond.</span><span>{formatCurrency(speseMensili)}</span></div>
+                    <div className="pt-1 border-t mt-1 text-xs text-muted-foreground">Netto = Canone − Cedolare − IMU − Spese</div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <span className={cn(
               'text-xl font-bold',
               nettoReale >= 0 ? 'text-green-300' : 'text-red-300'
@@ -49,7 +106,29 @@ export function FinancialSummaryCard({
               {formatCurrency(nettoReale)}
             </span>
           </div>
+          <div className="mt-2 flex justify-between items-center">
+            <span className="text-xs text-white/60 uppercase tracking-wider">Proiezione Anno</span>
+            <span className="text-sm font-semibold text-white">{formatCurrency(proiezioneNettoAnnua)}</span>
+          </div>
         </div>
+
+        {monthsStatus.length === 12 && (
+          <div className="financial-card-inner">
+            <div className="grid grid-cols-12 gap-0.5">
+              {monthsStatus.map((st, idx) => {
+                const amount = monthlyAmounts[idx] || 0;
+                const color = st === 'paid' ? 'bg-green-500 border-green-600' : st === 'missing' ? 'bg-red-500 border-red-600' : 'bg-white/20 border-white/30';
+                return (
+                  <div
+                    key={`m-${idx}`}
+                    className={cn('h-4 rounded-[3px] border', color)}
+                    title={`Mese ${idx + 1}: ${formatCurrency(amount)} • ${st}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Incasso Mensile */}
         <div className="financial-card-inner">

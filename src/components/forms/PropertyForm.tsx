@@ -32,6 +32,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useProperties, Property } from '@/hooks/useProperties';
+import { usePropertyAdmins } from '@/hooks/usePropertyAdmins';
 import { Building2, Plus, Pencil, Trash2 } from 'lucide-react';
 
 const propertySchema = z.object({
@@ -57,7 +58,11 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
   const [open, setOpen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { createProperty, updateProperty, deleteProperty } = useProperties();
+  const { createAdmin } = usePropertyAdmins();
   const isEditing = !!property;
+  const [step, setStep] = useState<'property' | 'admin'>('property');
+  const [createdPropertyId, setCreatedPropertyId] = useState<string | null>(null);
+  const [adminData, setAdminData] = useState<{ ragione_sociale: string; sito_web?: string; pid?: string; admin_login?: string; admin_password?: string }>({ ragione_sociale: '' });
 
   const form = useForm<PropertyFormData>({
     resolver: zodResolver(propertySchema),
@@ -102,7 +107,7 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
         note_generali: data.note_generali || null,
       });
     } else {
-      await createProperty.mutateAsync({
+      const created = await createProperty.mutateAsync({
         nome_complesso: data.nome_complesso,
         indirizzo_via: data.indirizzo_via || null,
         indirizzo_civico: data.indirizzo_civico || null,
@@ -112,6 +117,9 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
         codice_fiscale_ente: data.codice_fiscale_ente || null,
         note_generali: data.note_generali || null,
       });
+      setCreatedPropertyId((created as unknown as Property).id);
+      setStep('admin');
+      return;
     }
     form.reset();
     setOpen(false);
@@ -151,6 +159,7 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
             </DialogDescription>
           </DialogHeader>
           
+          {step === 'property' ? (
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -298,6 +307,83 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
               </div>
             </form>
           </Form>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold">Amministratore (obbligatorio)</h4>
+                <span className="text-xs text-muted-foreground">Immobile: {form.getValues('nome_complesso') || ''}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <FormLabel>Ragione Sociale *</FormLabel>
+                  <Input value={adminData.ragione_sociale} onChange={e => setAdminData(d => ({ ...d, ragione_sociale: e.target.value }))} placeholder="Studio Amministrazioni Rossi" />
+                </div>
+                <div>
+                  <FormLabel>Sito Web</FormLabel>
+                  <Input value={adminData.sito_web || ''} onChange={e => setAdminData(d => ({ ...d, sito_web: e.target.value }))} placeholder="https://studio.it" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <FormLabel>PID</FormLabel>
+                  <Input value={adminData.pid || ''} onChange={e => setAdminData(d => ({ ...d, pid: e.target.value }))} placeholder="PID portale" />
+                </div>
+                <div>
+                  <FormLabel>Login</FormLabel>
+                  <Input value={adminData.admin_login || ''} onChange={e => setAdminData(d => ({ ...d, admin_login: e.target.value }))} placeholder="username" />
+                </div>
+                <div>
+                  <FormLabel>Password</FormLabel>
+                  <Input type="password" value={adminData.admin_password || ''} onChange={e => setAdminData(d => ({ ...d, admin_password: e.target.value }))} placeholder="password" />
+                </div>
+              </div>
+              <div className="flex justify-between gap-3 pt-4">
+                <Button type="button" variant="outline" onClick={() => setStep('property')}>
+                  Indietro
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!createdPropertyId || !adminData.ragione_sociale) return;
+                    await createAdmin.mutateAsync({
+                      property_id: createdPropertyId,
+                      ragione_sociale: adminData.ragione_sociale,
+                      nome_referente: null,
+                      telefono_studio: null,
+                      cellulare_urgenze: null,
+                      email: null,
+                      email_pec: null,
+                      codice_fiscale: null,
+                      partita_iva: null,
+                      numero_rea: null,
+                      sede_legale_indirizzo: null,
+                      sede_legale_citta: null,
+                      sede_legale_cap: null,
+                      sede_legale_provincia: null,
+                      sede_operativa_indirizzo: null,
+                      sede_operativa_citta: null,
+                      sede_operativa_cap: null,
+                      sede_operativa_provincia: null,
+                      note: null,
+                      iban_pagamento: null,
+                      bic_swift: null,
+                      nome_banca: null,
+                      intestatario_conto: null,
+                      sito_web: adminData.sito_web || null,
+                      pid: adminData.pid || null,
+                      admin_login: adminData.admin_login || null,
+                      admin_password: adminData.admin_password || null,
+                    });
+                    setOpen(false);
+                    setStep('property');
+                    setCreatedPropertyId(null);
+                    onSuccess?.();
+                  }}
+                >
+                  Salva Amministratore
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

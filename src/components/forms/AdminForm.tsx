@@ -35,6 +35,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { usePropertyAdmins, type PropertyAdmin } from '@/hooks/usePropertyAdmins';
 import { UserCog, Trash2, Pencil, Plus } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
+import { db } from '../../../utils/localStorageDB.js';
 
 const adminSchema = z.object({
   ragione_sociale: z.string().min(1, 'Inserisci la ragione sociale'),
@@ -54,6 +57,12 @@ const adminSchema = z.object({
   bic_swift: z.string().optional(),
   nome_banca: z.string().optional(),
   intestatario_conto: z.string().optional(),
+  sito_web: z.string().url('URL non valido').optional().or(z.literal('')),
+  pid: z.string().optional(),
+  admin_login: z.string().optional(),
+  admin_password: z.string().optional(),
+  meeting_titolo: z.string().optional(),
+  meeting_data: z.string().optional(),
 });
 
 type AdminFormData = z.infer<typeof adminSchema>;
@@ -69,6 +78,8 @@ export function AdminForm({ admin, propertyId, trigger, onSuccess }: AdminFormPr
   const [open, setOpen] = useState(false);
   const { createAdmin, updateAdmin, deleteAdmin } = usePropertyAdmins(propertyId);
   const isEditing = !!admin;
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const form = useForm<AdminFormData>({
     resolver: zodResolver(adminSchema),
@@ -90,6 +101,12 @@ export function AdminForm({ admin, propertyId, trigger, onSuccess }: AdminFormPr
       bic_swift: admin?.bic_swift || '',
       nome_banca: admin?.nome_banca || '',
       intestatario_conto: admin?.intestatario_conto || '',
+      sito_web: admin?.sito_web || '',
+      pid: admin?.pid || '',
+      admin_login: admin?.admin_login || '',
+      admin_password: admin?.admin_password || '',
+      meeting_titolo: '',
+      meeting_data: '',
     },
   });
 
@@ -118,12 +135,64 @@ export function AdminForm({ admin, propertyId, trigger, onSuccess }: AdminFormPr
       bic_swift: data.bic_swift || null,
       nome_banca: data.nome_banca || null,
       intestatario_conto: data.intestatario_conto || null,
+      sito_web: data.sito_web || null,
+      pid: data.pid || null,
+      admin_login: data.admin_login || null,
+      admin_password: data.admin_password || null,
     };
 
     if (isEditing) {
       await updateAdmin.mutateAsync({ id: admin.id, ...payload });
     } else {
       await createAdmin.mutateAsync(payload);
+    }
+    if (user && data.meeting_titolo && data.meeting_data) {
+      const now = new Date().toISOString();
+      // Property-level reminder
+      const reminderId = crypto.randomUUID();
+      db.add({
+        __table: 'reminders',
+        id: reminderId,
+        user_id: user.id,
+        property_id: propertyId,
+        unit_id: null,
+        titolo: data.meeting_titolo,
+        tipo: 'CONTRATTUALE',
+        descrizione: null,
+        data_scadenza: data.meeting_data,
+        ricorrente: false,
+        frequenza_mesi: null,
+        giorni_anticipo_promemoria: 7,
+        note: null,
+        completata: false,
+        created_at: now,
+        updated_at: now,
+      });
+      // Replicate as unit-level alerts for all units of the property
+      const all: unknown[] = db.getAll();
+      const units = all.filter((x) => (x as { __table: string; property_id: string }).__table === 'units' && (x as { property_id: string }).property_id === propertyId) as { id: string }[];
+      units.forEach(u => {
+        db.add({
+          __table: 'reminders',
+          id: crypto.randomUUID(),
+          user_id: user.id,
+          property_id: propertyId,
+          unit_id: u.id,
+          titolo: data.meeting_titolo,
+          tipo: 'CONTRATTUALE',
+          descrizione: null,
+          data_scadenza: data.meeting_data,
+          ricorrente: false,
+          frequenza_mesi: null,
+          giorni_anticipo_promemoria: 7,
+          note: null,
+          completata: false,
+          created_at: now,
+          updated_at: now,
+          reminder_padre_id: reminderId,
+        });
+      });
+      queryClient.invalidateQueries({ queryKey: ['reminders'] });
     }
     setOpen(false);
     form.reset();
@@ -401,6 +470,98 @@ export function AdminForm({ admin, propertyId, trigger, onSuccess }: AdminFormPr
                       <FormLabel>BIC/SWIFT (opzionale)</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="BCITITMM" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t">
+              <h4 className="font-medium text-sm mb-3">Accesso Portale Amministratore</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="sito_web"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Sito Web</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="https://studio.it" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="pid"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>PID</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="PID portale" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="admin_login"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Login</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="username" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="admin_password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" {...field} placeholder="password" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="pt-4 border-t">
+              <h4 className="font-medium text-sm mb-3">Agenda Riunioni</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="meeting_titolo"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Titolo Riunione</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Riunione condominiale" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="meeting_data"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Data</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

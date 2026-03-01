@@ -8,6 +8,8 @@ export interface ExtraExpense {
   user_id: string;
   property_id: string | null;
   unit_id: string | null;
+  owner_id: string | null;
+  owner_type: 'property' | 'unit' | null;
   lease_id: string | null;
   categoria: string;
   descrizione: string;
@@ -47,13 +49,27 @@ export function useExpenses(unitId?: string, year?: number) {
     mutationFn: async (expense: Omit<ExtraExpense, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
       if (!user) throw new Error('Non autenticato');
       const now = new Date().toISOString();
-      const item: ExtraExpense & { __table: 'extra_expenses' } = { __table: 'extra_expenses', id: crypto.randomUUID(), user_id: user.id, created_at: now, updated_at: now, ...expense };
+      const item: ExtraExpense & { __table: 'extra_expenses' } = { 
+        __table: 'extra_expenses', 
+        id: crypto.randomUUID(), 
+        user_id: user.id, 
+        created_at: now, 
+        updated_at: now, 
+        owner_id: expense.unit_id || expense.property_id || null,
+        owner_type: expense.unit_id ? 'unit' : (expense.property_id ? 'property' : null),
+        ...expense 
+      };
       db.add(item);
+      db.syncStorage();
+      const ok = db.verifyItem(item.id);
+      if (!ok) throw new Error('Errore di salvataggio spesa');
       return item;
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
-      toast({ title: 'Spesa registrata', description: 'La spesa è stata aggiunta con successo.' });
+      const d = new Date(created.data_competenza);
+      const label = `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+      toast({ title: 'Spesa registrata', description: `Spesa registrata correttamente nel mese di ${label}.` });
     },
     onError: (error) => {
       toast({ variant: 'destructive', title: 'Errore', description: error.message });

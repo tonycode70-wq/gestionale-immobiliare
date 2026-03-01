@@ -28,6 +28,10 @@ export interface PropertyAdmin {
   bic_swift: string | null;
   nome_banca: string | null;
   intestatario_conto: string | null;
+  sito_web: string | null;
+  pid: string | null;
+  admin_login: string | null;
+  admin_password: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -61,6 +65,12 @@ export function usePropertyAdmins(propertyId?: string) {
       const now = new Date().toISOString();
       const item: PropertyAdmin & { __table: 'property_admins' } = { __table: 'property_admins', id: crypto.randomUUID(), created_at: now, updated_at: now, ...admin };
       db.add(item);
+      // Link property to admin_id for fast referencing
+      const all: unknown[] = db.getAll();
+      const prop = all.find(x => (x as { __table: string }).__table === 'properties' && (x as { id: string }).id === admin.property_id) as { id: string } | undefined;
+      if (prop) {
+        db.update(prop.id, { admin_id: item.id, updated_at: now });
+      }
       return item;
     },
     onSuccess: () => {

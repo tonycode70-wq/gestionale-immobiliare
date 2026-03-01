@@ -6,34 +6,50 @@ import { PropertyForm } from '@/components/forms/PropertyForm';
 import { TenantForm } from '@/components/forms/TenantForm';
 import { LeaseForm } from '@/components/forms/LeaseForm';
 import { ReminderForm } from '@/components/forms/ReminderForm';
+import { UnitForm } from '@/components/forms/UnitForm';
+import { useGlobalProperty } from '@/hooks/useGlobalProperty';
+import type { ReactNode, ElementType } from 'react';
 
 export function FAB() {
   const [isOpen, setIsOpen] = useState(false);
+  const { selectedPropertyId, setSelection } = useGlobalProperty();
 
-  const actions = [
+  const actions: Array<{ icon: ElementType; label: string; color: string; render: (trigger: ReactNode) => JSX.Element }> = [
     { 
       icon: Building2, 
       label: 'Nuovo immobile', 
       color: 'bg-primary',
-      component: PropertyForm
+      render: (trigger) => <PropertyForm trigger={trigger} />
+    },
+    { 
+      icon: Building2, 
+      label: 'Aggiungi nuova unità', 
+      color: 'bg-primary',
+      render: (trigger) => (
+        <UnitForm 
+          trigger={trigger} 
+          propertyId={selectedPropertyId !== 'all' ? selectedPropertyId : undefined} 
+          onSuccess={() => { if (selectedPropertyId !== 'all') setSelection(selectedPropertyId, 'all'); }} 
+        />
+      )
     },
     { 
       icon: Users, 
       label: 'Nuovo conduttore', 
       color: 'bg-info',
-      component: TenantForm
+      render: (trigger) => <TenantForm trigger={trigger} />
     },
     { 
       icon: FileText, 
       label: 'Nuovo contratto', 
       color: 'bg-success',
-      component: LeaseForm
+      render: (trigger) => <LeaseForm trigger={trigger} />
     },
     { 
       icon: Calendar, 
-      label: 'Nuova scadenza', 
+      label: 'Nuova scadenza / nota', 
       color: 'bg-warning',
-      component: ReminderForm
+      render: (trigger) => <ReminderForm trigger={trigger} />
     },
   ];
 
@@ -53,7 +69,6 @@ export function FAB() {
         isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
       )}>
         {actions.map((action, index) => {
-          const FormComponent = action.component;
           return (
             <div 
               key={action.label}
@@ -63,21 +78,19 @@ export function FAB() {
               <span className="bg-card px-3 py-1.5 rounded-lg shadow-md text-sm font-medium text-foreground">
                 {action.label}
               </span>
-              <FormComponent
-                trigger={
-                  <Button
-                    size="icon"
-                    className={cn(
-                      'w-12 h-12 rounded-full shadow-lg',
-                      action.color,
-                      'hover:opacity-90 text-white'
-                    )}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <action.icon className="h-5 w-5" />
-                  </Button>
-                }
-              />
+              {action.render(
+                <Button
+                  size="icon"
+                  className={cn(
+                    'w-12 h-12 rounded-full shadow-lg',
+                    action.color,
+                    'hover:opacity-90 text-white'
+                  )}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <action.icon className="h-5 w-5" />
+                </Button>
+              )}
             </div>
           );
         })}

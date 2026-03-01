@@ -14,6 +14,7 @@ export interface Property {
   provincia: string | null;
   codice_fiscale_ente: string | null;
   note_generali: string | null;
+  admin_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -41,25 +42,26 @@ export function useProperties() {
   const queryClient = useQueryClient();
 
   const { data: properties = [], isLoading, error } = useQuery({
-    queryKey: ['properties', user?.id],
+    queryKey: ['properties'],
     queryFn: async () => {
-      if (!user) return [];
       const all: unknown[] = db.getAll();
       const items = all
-        .filter((x) => (x as { __table: string; user_id: string }).__table === 'properties' && (x as { user_id: string }).user_id === user.id)
+        .filter((x) => (x as { __table: string }).__table === 'properties')
         .map((x) => x as Property);
       items.sort((a, b) => (a.nome_complesso || '').localeCompare(b.nome_complesso || ''));
       return items;
     },
-    enabled: !!user,
+    enabled: true,
   });
 
   const createProperty = useMutation({
     mutationFn: async (property: Omit<Property, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
       if (!user) throw new Error('Non autenticato');
       const now = new Date().toISOString();
-      const item: Property & { __table: 'properties' } = { __table: 'properties', id: crypto.randomUUID(), user_id: user.id, created_at: now, updated_at: now, ...property };
+      const item: Property & { __table: 'properties' } = { __table: 'properties', id: crypto.randomUUID(), user_id: user.id, admin_id: null, created_at: now, updated_at: now, ...property };
       db.add(item);
+      const ok = db.verifyItem(item.id);
+      if (!ok) throw new Error('Errore di salvataggio immobile');
       return item as Property;
     },
     onSuccess: () => {
@@ -77,6 +79,8 @@ export function useProperties() {
       db.update(id, payload);
       const all: unknown[] = db.getAll();
       const found = all.find((x) => (x as { id: string }).id === id) as Property | undefined;
+      const ok = found ? db.verifyItem(id) : false;
+      if (!ok) throw new Error('Errore di salvataggio immobile');
       return found as Property;
     },
     onSuccess: () => {
@@ -90,11 +94,27 @@ export function useProperties() {
 
   const deleteProperty = useMutation({
     mutationFn: async (id: string) => {
+      // Cascade delete related entities
+      const all: unknown[] = db.getAll();
+      const units = all.filter((x) => (x as { __table: string; property_id: string }).__table === 'units' && (x as { property_id: string }).property_id === id) as { id: string }[];
+      const leases = all.filter((x) => (x as { __table: string; unit_id: string }).__table === 'leases' && units.some(u => u.id === (x as { unit_id: string }).unit_id)) as { id: string }[];
+      const payments = all.filter((x) => (x as { __table: string; lease_id: string }).__table === 'payments' && leases.some(l => l.id === (x as { lease_id: string }).lease_id)) as { id: string }[];
+      const expenses = all.filter((x) => (x as { __table: string }).__table === 'extra_expenses' && ((x as { property_id: string | null }).property_id === id || units.some(u => u.id === (x as { unit_id: string | null }).unit_id))) as { id: string }[];
+      const reminders = all.filter((x) => (x as { __table: string }).__table === 'reminders' && ((x as { property_id: string | null }).property_id === id || units.some(u => u.id === (x as { unit_id: string | null }).unit_id))) as { id: string }[];
+      const cadastral = all.filter((x) => (x as { __table: string; unit_id: string }).__table === 'cadastral_units' && units.some(u => u.id === (x as { unit_id: string }).unit_id)) as { id: string }[];
+      const inventories = all.filter((x) => (x as { __table: string; unit_id: string }).__table === 'unit_inventories' && units.some(u => u.id === (x as { unit_id: string }).unit_id)) as { id: string }[];
+      const leaseParties = all.filter((x) => (x as { __table: string; lease_id: string }).__table === 'lease_parties' && leases.some(l => l.id === (x as { lease_id: string }).lease_id)) as { id: string }[];
+      const admin = all.find((x) => (x as { __table: string; property_id: string }).__table === 'property_admins' && (x as { property_id: string }).property_id === id) as { id: string } | undefined;
+      // Delete children
+      [...payments, ...expenses, ...reminders, ...cadastral, ...inventories, ...leaseParties, ...leases, ...units].forEach(e => db.delete(e.id));
+      // Optionally remove admin link (keep admin record)
+      if (admin) db.update(admin.id, { property_id: null });
+      // Finally delete property
       db.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['properties'] });
-      toast({ title: 'Immobile eliminato', description: 'L\'immobile è stato rimosso.' });
+      toast({ title: 'Immobile eliminato', description: 'Sono stati rimossi anche unità, contratti e dati correlati.' });
     },
     onError: (error) => {
       toast({ variant: 'destructive', title: 'Errore', description: error.message });
@@ -112,7 +132,6 @@ export function useUnits(propertyId?: string) {
   const { data: units = [], isLoading, error } = useQuery({
     queryKey: ['units', propertyId],
     queryFn: async () => {
-      if (!user) return [];
       const all: unknown[] = db.getAll();
       let items = all.filter((x) => (x as { __table: string }).__table === 'units').map((x) => x as Unit);
       if (propertyId) {
@@ -121,7 +140,7 @@ export function useUnits(propertyId?: string) {
       items.sort((a, b) => (a.nome_interno || '').localeCompare(b.nome_interno || ''));
       return items;
     },
-    enabled: !!user,
+    enabled: true,
   });
 
   const createUnit = useMutation({
@@ -129,6 +148,8 @@ export function useUnits(propertyId?: string) {
       const now = new Date().toISOString();
       const item: Unit & { __table: 'units' } = { __table: 'units', id: crypto.randomUUID(), created_at: now, updated_at: now, ...unit };
       db.add(item);
+      const ok = db.verifyItem(item.id);
+      if (!ok) throw new Error('Errore di salvataggio unità');
       return item;
     },
     onSuccess: async (created: Unit) => {

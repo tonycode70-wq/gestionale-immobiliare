@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { EllipsisVertical, Pencil, Trash2, Mail, MessageCircle } from 'lucide-react';
 import { formatCurrency } from '@/lib/propertyUtils';
+import { calculateIMU, type IMUResult, calculateCedolareSecca, type CedolareResult } from '@/lib/taxCalculations';
+import { useCadastral } from '@/hooks/useCadastral';
 import { cn } from '@/lib/utils';
 import { usePayments, type Payment } from '@/hooks/usePayments';
 import { useExpenses } from '@/hooks/useExpenses';
@@ -20,11 +22,14 @@ import { PaymentForm } from '@/components/forms/PaymentForm';
 import { db } from '../../utils/localStorageDB.js';
 import type { Tenant } from '@/types';
 import { useGlobalProperty } from '@/hooks/useGlobalProperty';
+import { SyncIndicator } from '@/components/SyncIndicator';
+import { ReportPreview } from '@/components/report/ReportPreview';
 
 const RegistroPage = () => {
   const now = new Date();
   const { user } = useAuth();
-  const [selectedUnit, setSelectedUnit] = useState<string>('all');
+  const { selectedPropertyId, selectedUnitId } = useGlobalProperty();
+  const [selectedUnit, setSelectedUnit] = useState<string>(selectedUnitId || 'all');
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [activeTab, setActiveTab] = useState<'incassi' | 'spese'>('incassi');
@@ -35,7 +40,8 @@ const RegistroPage = () => {
   const { tenants } = useTenants();
   const { payments, isLoading: loadingPayments, markAsPaid, deletePayment } = usePayments(undefined, selectedYear);
   const { expenses, isLoading: loadingExpenses } = useExpenses(undefined, selectedYear);
-  const { selectedPropertyId } = useGlobalProperty();
+  
+  const { cadastralUnits } = useCadastral(selectedUnit === 'all' ? undefined : selectedUnit);
 
   const isLoading = loadingUnits || loadingPayments || loadingExpenses;
 
@@ -109,16 +115,17 @@ const RegistroPage = () => {
 
   // Filter extra expenses
   const filteredExpenses = useMemo(() => {
-    return expenses
-      .filter(e => {
-        const date = new Date(e.data_competenza);
-        return date.getFullYear() === selectedYear && date.getMonth() + 1 === selectedMonth;
-      })
-      .filter(e => {
-        const matchProperty = selectedPropertyId === 'all' ? true : e.property_id === selectedPropertyId;
-        const matchUnit = selectedUnit === 'all' ? true : e.unit_id === selectedUnit;
-        return matchProperty && matchUnit;
-      });
+    const byMonth = expenses.filter(e => {
+      const date = new Date(e.data_competenza);
+      return date.getFullYear() === selectedYear && date.getMonth() + 1 === selectedMonth;
+    });
+    if (selectedUnit !== 'all') {
+      return byMonth.filter(e => (e.unit_id === selectedUnit) || (e.owner_type === 'unit' && e.owner_id === selectedUnit));
+    }
+    if (selectedPropertyId !== 'all') {
+      return byMonth.filter(e => (e.property_id === selectedPropertyId) || (e.owner_type === 'property' && e.owner_id === selectedPropertyId));
+    }
+    return byMonth;
   }, [selectedMonth, selectedYear, selectedUnit, expenses, selectedPropertyId]);
 
   const totals = useMemo(() => {
@@ -138,6 +145,57 @@ const RegistroPage = () => {
     ) / 100;
     const speseStraord = filteredExpenses.reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
     const nettoReale = incassatoTotale - cedolareTasse - speseStraord;
+    // Monthly breakdown for Card Blu 2.0
+    const unitLease = selectedUnit === 'all' 
+      ? null 
+      : leases.find(l => l.unit_id === selectedUnit 
+          && new Date(l.data_inizio) <= new Date(selectedYear, selectedMonth - 1, 28) 
+          && new Date(l.data_fine) >= new Date(selectedYear, selectedMonth - 1, 1));
+    const isCedolare = unitLease ? (unitLease.regime_locativo === 'cedolare_21' || unitLease.regime_locativo === 'cedolare_10') : false;
+    const aliquota = unitLease?.regime_locativo === 'cedolare_21' ? 0.21 : unitLease?.regime_locativo === 'cedolare_10' ? 0.10 : 0;
+    const annoContratto = unitLease ? (selectedYear - new Date(unitLease.data_inizio).getFullYear() + 1) : 0;
+    const cedolareAnnua = isCedolare ? (annoContratto === 1 ? 0 : (unitLease!.canone_mensile * 12) * aliquota) : 0;
+    const cedolareMensile = Math.round((cedolareAnnua / 12) * 100) / 100;
+    let imuMensile = 0;
+    if (selectedUnit !== 'all' && cadastralUnits && cadastralUnits.length > 0) {
+      const property = units.find(u => u.id === selectedUnit)?.property_id ? properties.find(p => p.id === units.find(u => u.id === selectedUnit)?.property_id) : null;
+      const comune = (property?.citta || 'Desenzano del Garda').toLowerCase();
+      const data = cadastralUnits.map(cu => ({ categoria_catastale: cu.categoria_catastale, rendita_euro: cu.rendita_euro }));
+      const hasConcordato = unitLease?.tipo_contratto === '3+2_agevolato';
+      const imuResult: IMUResult = calculateIMU(data, {
+        anno: selectedYear,
+        comune,
+        aliquota_per_mille: 10.6,
+        percentuale_possesso: 100,
+        mesi_possesso: 12,
+        is_prima_casa: false,
+        detrazioni_euro: 0,
+        riduzione_canone_concordato: !!hasConcordato,
+      });
+      imuMensile = Math.round((imuResult.impostaAnnua / 12) * 100) / 100;
+    }
+    const nettoRealeMensile = Math.round((incassatoTotale - cedolareMensile - imuMensile - speseStraord) * 100) / 100;
+    const statoPagamenti = filteredPayments.every(p => p.payment.stato_pagamento === 'PAGATO') ? 'OK' : 'MANCANTI';
+    const scadenzeAttive: Array<{ label: string; importo: number }> = [];
+    if (selectedUnit !== 'all' && unitLease) {
+      const ced: CedolareResult = calculateCedolareSecca({
+        anno: selectedYear,
+        regime: unitLease.regime_locativo as 'cedolare_21' | 'cedolare_10',
+        dataInizioContratto: unitLease.data_inizio,
+        dataFineContratto: unitLease.data_fine,
+        canoneAnnuo: unitLease.canone_mensile * 12,
+        isPrimoAnno: (selectedYear - new Date(unitLease.data_inizio).getFullYear() + 1) === 1,
+      });
+      ced.rate.forEach(r => {
+        const d = new Date(r.scadenza);
+        if (d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth) {
+          scadenzeAttive.push({ label: r.descrizione, importo: r.importo });
+        }
+      });
+      if (imuMensile > 0 && (selectedMonth === 6 || selectedMonth === 12)) {
+        scadenzeAttive.push({ label: selectedMonth === 6 ? 'IMU Acconto' : 'IMU Saldo', importo: selectedMonth === 6 ? Math.round(imuMensile * 6 * 100) / 100 : Math.round(imuMensile * 6 * 100) / 100 });
+      }
+    }
     return {
       totaleAffittoImponibile: imponibile,
       totaleSpese: speseCondominialiIncassate,
@@ -145,8 +203,39 @@ const RegistroPage = () => {
       cedolareTasse,
       speseStraord,
       nettoReale,
+      cedolareMensile,
+      imuMensile,
+      nettoRealeMensile,
+      statoPagamenti,
+      scadenzeAttive,
     };
-  }, [filteredPayments, filteredExpenses, selectedYear]);
+  }, [filteredPayments, filteredExpenses, selectedYear, selectedMonth, selectedUnit, leases, units, properties, cadastralUnits]);
+
+  const monthsStatus = useMemo(() => {
+    if (selectedUnit === 'all') return [];
+    const lease = leases.find(l => l.unit_id === selectedUnit);
+    const year = selectedYear;
+    const start = lease ? new Date(lease.data_inizio) : null;
+    const end = lease ? new Date(lease.data_fine) : null;
+    const unitPayments = payments.filter(p => p.lease_id === (lease?.id || '') && p.competenza_anno === year);
+    const arr: Array<'paid'|'missing'|'future'> = [];
+    for (let m = 1; m <= 12; m++) {
+      const inContract = !!(start && end) && new Date(year, m - 1, 15) >= start! && new Date(year, m - 1, 15) <= end!;
+      if (!inContract) {
+        arr.push('future');
+        continue;
+      }
+      const pmt = unitPayments.find(p => p.competenza_mese === m);
+      if (pmt && pmt.stato_pagamento === 'PAGATO') {
+        arr.push('paid');
+      } else if (m <= selectedMonth) {
+        arr.push('missing');
+      } else {
+        arr.push('future');
+      }
+    }
+    return arr;
+  }, [selectedUnit, selectedYear, selectedMonth, payments, leases]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -218,18 +307,43 @@ const RegistroPage = () => {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">Registro</h2>
           {activeTab === 'spese' ? (
-            <ExpenseForm trigger={<Button className="shrink-0"><Receipt className="h-4 w-4 mr-2" />Nuova Spesa</Button>} />
+            <ExpenseForm 
+              unitId={selectedUnit === 'all' ? undefined : selectedUnit} 
+              trigger={<Button className="shrink-0"><Receipt className="h-4 w-4 mr-2" />Nuova Spesa</Button>} 
+            />
           ) : (
             <PaymentForm trigger={<Button className="shrink-0">Registra Incasso</Button>} />
           )}
         </div>
         {/* Selectors */}
-        <UnitSelector value={selectedUnit} onChange={setSelectedUnit} units={unitOptions} />
+        <div className="flex items-center justify-between">
+          <UnitSelector value={selectedUnit} onChange={setSelectedUnit} units={unitOptions} />
+          <div className="flex items-center gap-2">
+            {selectedUnit !== 'all' && <ReportPreview unitId={selectedUnit} year={selectedYear} />}
+            <SyncIndicator />
+          </div>
+        </div>
         <MonthSelector 
           month={selectedMonth} 
           year={selectedYear} 
           onChange={(m, y) => { setSelectedMonth(m); setSelectedYear(y); }}
         />
+
+        {monthsStatus.length === 12 && (
+          <div className="grid grid-cols-12 gap-0.5 mb-2">
+            {monthsStatus.map((st, idx) => (
+              <div
+                key={`m-${idx}`}
+                className={cn(
+                  'h-3 rounded-[3px] border',
+                  st === 'paid' ? 'bg-green-500 border-green-600' : st === 'missing' ? 'bg-red-500 border-red-600' : 'bg-gray-400 border-gray-500'
+                )}
+                aria-label={st}
+                title={`Mese ${idx + 1}: ${st}`}
+              />
+            ))}
+          </div>
+        )}
 
         <div className="financial-card">
           <div className="grid grid-cols-2 gap-4">
@@ -242,7 +356,7 @@ const RegistroPage = () => {
               <p className="text-lg font-bold text-white">{formatCurrency(totals.totaleAffittoImponibile)}</p>
             </div>
             <div className="financial-card-inner">
-              <p className="text-xs text-white/60 uppercase mb-1">Cedolare/Tasse (21%)</p>
+              <p className="text-xs text-white/60 uppercase mb-1">Cedolare/Tasse</p>
               <p className="text-lg font-bold text-white">{formatCurrency(totals.cedolareTasse)}</p>
             </div>
             <div className="financial-card-inner">
@@ -253,6 +367,34 @@ const RegistroPage = () => {
           <div className="mt-3">
             <p className="text-xs text-white/60 uppercase mb-1">NETTO REALE</p>
             <p className="text-xl font-extrabold text-white">{formatCurrency(totals.nettoReale)}</p>
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              <div className="financial-card-inner text-center">
+                <p className="text-[10px] text-white/60 uppercase">Cedolare/12</p>
+                <p className="text-sm font-bold text-white/80">{formatCurrency(totals.cedolareMensile || 0)}</p>
+              </div>
+              <div className="financial-card-inner text-center">
+                <p className="text-[10px] text-white/60 uppercase">IMU/12</p>
+                <p className="text-sm font-bold text-white/80">{formatCurrency(totals.imuMensile || 0)}</p>
+              </div>
+              <div className="financial-card-inner text-center">
+                <p className="text-[10px] text-white/60 uppercase">Netto mese</p>
+                <p className="text-sm font-bold text-green-300">{formatCurrency(totals.nettoRealeMensile || 0)}</p>
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[10px] text-white/60 uppercase">Stato Pagamenti</span>
+              <span className={cn('text-xs font-bold', totals.statoPagamenti === 'OK' ? 'text-green-300' : 'text-red-300')}>{totals.statoPagamenti}</span>
+            </div>
+            {totals.scadenzeAttive && totals.scadenzeAttive.length > 0 && (
+              <div className="mt-2 p-2 rounded bg-muted/30">
+                {totals.scadenzeAttive.map((s, idx) => (
+                  <div key={idx} className="flex items-center justify-between text-xs text-white/80">
+                    <span>{s.label}</span>
+                    <span>{formatCurrency(s.importo)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

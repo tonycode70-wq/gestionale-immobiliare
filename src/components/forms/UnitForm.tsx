@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useUnits, useProperties, Unit } from '@/hooks/useProperties';
+import { useGlobalProperty } from '@/hooks/useGlobalProperty';
 import { Home, Plus, Pencil, Trash2 } from 'lucide-react';
 
 const unitSchema = z.object({
@@ -79,6 +80,7 @@ export function UnitForm({ unit, propertyId, trigger, onSuccess }: UnitFormProps
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const { createUnit, updateUnit, deleteUnit } = useUnits();
   const { properties } = useProperties();
+  const { selectedPropertyId } = useGlobalProperty();
   const isEditing = !!unit;
 
   const form = useForm<UnitFormData>({
@@ -115,6 +117,19 @@ export function UnitForm({ unit, propertyId, trigger, onSuccess }: UnitFormProps
       });
     }
   }, [unit, propertyId, form]);
+
+  useEffect(() => {
+    const current = form.getValues('property_id');
+    if (!current) {
+      if (propertyId) {
+        form.setValue('property_id', propertyId);
+      } else if (selectedPropertyId && selectedPropertyId !== 'all') {
+        form.setValue('property_id', selectedPropertyId);
+      } else if (properties.length === 1) {
+        form.setValue('property_id', properties[0].id);
+      }
+    }
+  }, [properties, propertyId, selectedPropertyId, form]);
 
   const onSubmit = async (data: UnitFormData) => {
     if (isEditing && unit) {

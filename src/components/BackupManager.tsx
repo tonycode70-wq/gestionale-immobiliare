@@ -6,8 +6,8 @@ export function BackupManager() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleDownload = () => {
-    const data = db.getAll();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const fullState = db.getState();
+    const blob = new Blob([JSON.stringify(fullState, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const ts = new Date();
     const name = `backup_APP_DATA_V1_${ts.getFullYear()}${String(ts.getMonth() + 1).padStart(2, "0")}${String(ts.getDate()).padStart(2, "0")}_${String(ts.getHours()).padStart(2, "0")}${String(ts.getMinutes()).padStart(2, "0")}${String(ts.getSeconds()).padStart(2, "0")}.json`;
@@ -32,7 +32,15 @@ export function BackupManager() {
       try {
         const text = String(reader.result || "");
         const parsed = JSON.parse(text);
-        db.replaceAll(Array.isArray(parsed) ? parsed : []);
+        if (Array.isArray(parsed)) {
+          db.replaceAll(parsed);
+        } else {
+          db.replaceState(parsed);
+        }
+        try {
+          const sel = db.getSelection();
+          localStorage.setItem("active_unit_id", sel.unitId || "all");
+        } catch {}
         window.location.reload();
       } catch {
         alert("File di backup non valido");

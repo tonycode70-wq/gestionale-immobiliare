@@ -18,6 +18,7 @@ export interface IMUConfig {
   mesi_possesso: number; // 1-12
   is_prima_casa: boolean;
   detrazioni_euro: number;
+  riduzione_canone_concordato?: boolean;
 }
 
 export interface IMUResult {
@@ -115,9 +116,14 @@ export function calculateIMU(
   const impostaProRata = impostaLorda * (mesiEffettivi / 12);
 
   // 4. Apply deductions (only for prima casa, which shouldn't apply for seconde case)
-  const impostaAnnua = config.is_prima_casa 
+  let impostaAnnua = config.is_prima_casa 
     ? Math.max(0, impostaProRata - config.detrazioni_euro)
     : impostaProRata;
+
+  // 4b. Reduction for canone concordato (-25%)
+  if (config.riduzione_canone_concordato) {
+    impostaAnnua = impostaAnnua * 0.75;
+  }
 
   // 5. Round to 2 decimals
   const impostaArrotondata = Math.round(impostaAnnua * 100) / 100;
