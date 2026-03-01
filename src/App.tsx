@@ -81,7 +81,7 @@ const App = () => {
               <AppRoutes />
             </GlobalPropertyProvider>
           </AuthProvider>
-        </BrowserRouter>
+        </HashRouter>
       </TooltipProvider>
     </QueryClientProvider>
   );
