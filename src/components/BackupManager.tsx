@@ -28,6 +28,16 @@ export function BackupManager() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => {
+      console.error("Errore lettura file di backup");
+      alert("Errore durante la lettura del file. Riprova.");
+      e.target.value = "";
+    };
+    reader.onabort = () => {
+      console.error("Lettura file annullata");
+      alert("Lettura annullata.");
+      e.target.value = "";
+    };
     reader.onload = () => {
       try {
         const text = String(reader.result || "");
@@ -41,14 +51,17 @@ export function BackupManager() {
           const sel = db.getSelection();
           localStorage.setItem("active_unit_id", sel.unitId || "all");
         } catch {}
+        db.commitNow();
+        alert("Ripristino completato. Ricarico l'app.");
         window.location.reload();
-      } catch {
-        alert("File di backup non valido");
+      } catch (err) {
+        console.error("Backup non valido:", err);
+        alert("File di backup non valido. Controlla formato JSON.");
       } finally {
         e.target.value = "";
       }
     };
-    reader.readAsText(file);
+    reader.readAsText(file, "utf-8");
   };
 
   return (
@@ -58,7 +71,7 @@ export function BackupManager() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="application/json"
+        accept="application/json,.json"
         className="hidden"
         onChange={handleFileChange}
       />

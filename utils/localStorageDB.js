@@ -168,6 +168,11 @@ export function replaceState(next) {
   return cache;
 }
 
+export function commitNow() {
+  writeState(cache);
+  return flattenAll(cache);
+}
+
 const flattenAll = (state) => {
   const all = [];
   Object.keys(state).forEach((k) => {
@@ -264,6 +269,7 @@ export const db = {
   syncStorage,
   getState,
   replaceState,
+  commitNow,
   healthCheck,
   verifyItem,
   cleanupOrphans,
