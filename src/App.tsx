@@ -74,7 +74,8 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        {/* AGGIUNTA LA PROPRIETÀ BASENAME QUI SOTTO: */}
+        <BrowserRouter basename="/gestionale-immobiliare">
           <AuthProvider>
             <GlobalPropertyProvider>
               <AppRoutes />
