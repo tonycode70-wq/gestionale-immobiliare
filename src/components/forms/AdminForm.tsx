@@ -38,6 +38,7 @@ import { UserCog, Trash2, Pencil, Plus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
 import { db } from '../../../utils/localStorageDB.js';
+import { DatePicker } from '@/components/ui/date-picker';
 
 const adminSchema = z.object({
   ragione_sociale: z.string().min(1, 'Inserisci la ragione sociale'),
@@ -560,9 +561,13 @@ export function AdminForm({ admin, propertyId, trigger, onSuccess }: AdminFormPr
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Data</FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} />
-                      </FormControl>
+                      <DatePicker
+                        value={field.value || null}
+                        onChange={(v) => field.onChange(v || '')}
+                        minYear={1900}
+                        maxYear={2100}
+                        placeholder="YYYY-MM-DD"
+                      />
                       <FormMessage />
                     </FormItem>
                   )}

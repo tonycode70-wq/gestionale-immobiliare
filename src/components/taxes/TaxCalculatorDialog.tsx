@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Dialog,
   DialogContent,
@@ -354,9 +355,13 @@ export function TaxCalculatorDialog({ unit, lease, trigger }: TaxCalculatorDialo
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Data Inizio Contratto</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
+                        <DatePicker
+                          value={field.value}
+                          onChange={(v) => field.onChange(v || '')}
+                          minYear={1900}
+                          maxYear={2100}
+                          placeholder="YYYY-MM-DD"
+                        />
                         <FormMessage />
                       </FormItem>
                     )}
@@ -367,9 +372,13 @@ export function TaxCalculatorDialog({ unit, lease, trigger }: TaxCalculatorDialo
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Data Fine Contratto</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
+                        <DatePicker
+                          value={field.value}
+                          onChange={(v) => field.onChange(v || '')}
+                          minYear={1900}
+                          maxYear={2100}
+                          placeholder="YYYY-MM-DD"
+                        />
                         <FormMessage />
                       </FormItem>
                     )}

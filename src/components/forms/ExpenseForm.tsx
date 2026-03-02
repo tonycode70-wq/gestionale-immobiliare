@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -210,9 +211,13 @@ export function ExpenseForm({ expense, unitId, trigger }: ExpenseFormProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Data *</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
+                    <DatePicker
+                      value={field.value}
+                      onChange={(v) => field.onChange(v || '')}
+                      minYear={1900}
+                      maxYear={2100}
+                      placeholder="Seleziona data"
+                    />
                     <FormMessage />
                   </FormItem>
                 )}
@@ -262,9 +267,13 @@ export function ExpenseForm({ expense, unitId, trigger }: ExpenseFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Data Pagamento</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} />
-                  </FormControl>
+                  <DatePicker
+                    value={field.value || null}
+                    onChange={(v) => field.onChange(v || '')}
+                    minYear={1900}
+                    maxYear={2100}
+                    placeholder="Seleziona data pagamento"
+                  />
                   <FormMessage />
                 </FormItem>
               )}

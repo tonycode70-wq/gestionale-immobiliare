@@ -80,6 +80,7 @@ type LeaseFormData = z.infer<typeof leaseSchema>;
 
 interface LeaseFormProps {
   unitId?: string;
+  lease?: import('@/hooks/useLeases').Lease;
   trigger?: React.ReactNode;
   onSuccess?: () => void;
 }
@@ -114,41 +115,43 @@ const statoContrattoOptions = [
   { value: 'contenzioso', label: 'Contenzioso' },
 ];
 
-export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
+export function LeaseForm({ unitId, lease, trigger, onSuccess }: LeaseFormProps) {
   const [open, setOpen] = useState(false);
-  const { createLease } = useLeases();
+  const { createLease, updateLease } = useLeases();
   const { units } = useUnits();
   const { tenants } = useTenants();
   const queryClient = useQueryClient();
 
+  const isEditing = !!lease;
+
   const form = useForm<LeaseFormData>({
     resolver: zodResolver(leaseSchema),
     defaultValues: {
-      unit_id: unitId || '',
+      unit_id: lease?.unit_id || unitId || '',
       tenant_ids: [],
-      codice_contratto_interno: '',
-      tipo_contratto: '4+4_abitativo',
-      regime_locativo: 'cedolare_21',
-      data_inizio: new Date(),
-      data_fine: new Date(new Date().setFullYear(new Date().getFullYear() + 4)),
-      canone_mensile: 0,
-      spese_condominiali_mensili_previste: 0,
-      altre_spese_mensili_previste: 0,
-      deposito_cauzionale_importo: 0,
-      deposito_cauzionale_mesi: 0,
-      deposito_stato: 'non_versato',
-      modalita_pagamento: 'bonifico',
-      iban_pagamento: '',
-      stato_contratto: 'in_preparazione',
-      primo_anno_locazione: true,
-      estremi_registrazione: '',
-      garante_tipo: undefined,
-      garante_nome: '',
-      garante_codice_fiscale: '',
-      fideiussione_bancaria: false,
-      fideiussione_dettagli: '',
-      garanzie_altre: '',
-      note: '',
+      codice_contratto_interno: lease?.codice_contratto_interno || '',
+      tipo_contratto: (lease?.tipo_contratto as any) || '4+4_abitativo',
+      regime_locativo: (lease?.regime_locativo as any) || 'cedolare_21',
+      data_inizio: lease?.data_inizio ? new Date(lease.data_inizio) : new Date(),
+      data_fine: lease?.data_fine ? new Date(lease.data_fine) : new Date(new Date().setFullYear(new Date().getFullYear() + 4)),
+      canone_mensile: lease?.canone_mensile || 0,
+      spese_condominiali_mensili_previste: lease?.spese_condominiali_mensili_previste || 0,
+      altre_spese_mensili_previste: lease?.altre_spese_mensili_previste || 0,
+      deposito_cauzionale_importo: lease?.deposito_cauzionale_importo || 0,
+      deposito_cauzionale_mesi: lease?.deposito_cauzionale_mesi || 0,
+      deposito_stato: (lease?.deposito_stato as any) || 'non_versato',
+      modalita_pagamento: lease?.modalita_pagamento || 'bonifico',
+      iban_pagamento: lease?.iban_pagamento || '',
+      stato_contratto: (lease?.stato_contratto as any) || 'in_preparazione',
+      primo_anno_locazione: lease?.primo_anno_locazione ?? true,
+      estremi_registrazione: lease?.estremi_registrazione || '',
+      garante_tipo: (lease?.garante_tipo as any) || undefined,
+      garante_nome: lease?.garante_nome || '',
+      garante_codice_fiscale: lease?.garante_codice_fiscale || '',
+      fideiussione_bancaria: !!lease?.fideiussione_bancaria,
+      fideiussione_dettagli: lease?.fideiussione_dettagli || '',
+      garanzie_altre: lease?.garanzie_altre || '',
+      note: lease?.note || '',
     },
   });
 
@@ -160,48 +163,79 @@ export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
     const endDate = new Date(data.data_fine);
     const durata_mesi = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
     
-    const created = await createLease.mutateAsync({
-      unit_id: data.unit_id,
-      codice_contratto_interno: data.codice_contratto_interno || null,
-      tipo_contratto: data.tipo_contratto,
-      regime_locativo: data.regime_locativo,
-      data_inizio: format(data.data_inizio, 'yyyy-MM-dd'),
-      data_fine: format(data.data_fine, 'yyyy-MM-dd'),
-      durata_mesi,
-      canone_mensile: data.canone_mensile,
-      spese_condominiali_mensili_previste: data.spese_condominiali_mensili_previste,
-      altre_spese_mensili_previste: data.altre_spese_mensili_previste,
-      deposito_cauzionale_importo: data.deposito_cauzionale_importo,
-      deposito_cauzionale_mesi: data.deposito_cauzionale_mesi,
-      deposito_stato: data.deposito_stato,
-      data_versamento_deposito: null,
-      data_restituzione_deposito: null,
-      modalita_pagamento: data.modalita_pagamento,
-      iban_pagamento: data.iban_pagamento || null,
-      stato_contratto: data.stato_contratto,
-      primo_anno_locazione: data.primo_anno_locazione,
-      estremi_registrazione: data.estremi_registrazione || null,
-      modello_rli_protocollo: null,
-      garante_tipo: data.garante_tipo || null,
-      garante_nome: data.garante_nome || null,
-      garante_codice_fiscale: data.garante_codice_fiscale || null,
-      fideiussione_bancaria: !!data.fideiussione_bancaria,
-      fideiussione_dettagli: data.fideiussione_dettagli || null,
-      garanzie_altre: data.garanzie_altre || null,
-      note: data.note || null,
-    });
+    if (isEditing && lease) {
+      await updateLease.mutateAsync({
+        id: lease.id,
+        unit_id: data.unit_id,
+        codice_contratto_interno: data.codice_contratto_interno || null,
+        tipo_contratto: data.tipo_contratto,
+        regime_locativo: data.regime_locativo,
+        data_inizio: format(data.data_inizio, 'yyyy-MM-dd'),
+        data_fine: format(data.data_fine, 'yyyy-MM-dd'),
+        durata_mesi,
+        canone_mensile: data.canone_mensile,
+        spese_condominiali_mensili_previste: data.spese_condominiali_mensili_previste,
+        altre_spese_mensili_previste: data.altre_spese_mensili_previste,
+        deposito_cauzionale_importo: data.deposito_cauzionale_importo,
+        deposito_cauzionale_mesi: data.deposito_cauzionale_mesi,
+        deposito_stato: data.deposito_stato,
+        modalita_pagamento: data.modalita_pagamento,
+        iban_pagamento: data.iban_pagamento || null,
+        stato_contratto: data.stato_contratto,
+        primo_anno_locazione: data.primo_anno_locazione,
+        estremi_registrazione: data.estremi_registrazione || null,
+        garante_tipo: data.garante_tipo || null,
+        garante_nome: data.garante_nome || null,
+        garante_codice_fiscale: data.garante_codice_fiscale || null,
+        fideiussione_bancaria: !!data.fideiussione_bancaria,
+        fideiussione_dettagli: data.fideiussione_dettagli || null,
+        garanzie_altre: data.garanzie_altre || null,
+        note: data.note || null,
+      } as any);
+    } else {
+      const created = await createLease.mutateAsync({
+        unit_id: data.unit_id,
+        codice_contratto_interno: data.codice_contratto_interno || null,
+        tipo_contratto: data.tipo_contratto,
+        regime_locativo: data.regime_locativo,
+        data_inizio: format(data.data_inizio, 'yyyy-MM-dd'),
+        data_fine: format(data.data_fine, 'yyyy-MM-dd'),
+        durata_mesi,
+        canone_mensile: data.canone_mensile,
+        spese_condominiali_mensili_previste: data.spese_condominiali_mensili_previste,
+        altre_spese_mensili_previste: data.altre_spese_mensili_previste,
+        deposito_cauzionale_importo: data.deposito_cauzionale_importo,
+        deposito_cauzionale_mesi: data.deposito_cauzionale_mesi,
+        deposito_stato: data.deposito_stato,
+        data_versamento_deposito: null,
+        data_restituzione_deposito: null,
+        modalita_pagamento: data.modalita_pagamento,
+        iban_pagamento: data.iban_pagamento || null,
+        stato_contratto: data.stato_contratto,
+        primo_anno_locazione: data.primo_anno_locazione,
+        estremi_registrazione: data.estremi_registrazione || null,
+        modello_rli_protocollo: null,
+        garante_tipo: data.garante_tipo || null,
+        garante_nome: data.garante_nome || null,
+        garante_codice_fiscale: data.garante_codice_fiscale || null,
+        fideiussione_bancaria: !!data.fideiussione_bancaria,
+        fideiussione_dettagli: data.fideiussione_dettagli || null,
+        garanzie_altre: data.garanzie_altre || null,
+        note: data.note || null,
+      });
 
-    if (created && selectedTenants.length > 0) {
-      const leaseId = created.id as string;
-      const inserts = selectedTenants.map(tenantId => ({
-        lease_id: leaseId,
-        tenant_id: tenantId,
-        ruolo: 'intestatario',
-        quota_canone_percentuale: null,
-        note: null,
-      }));
-      inserts.forEach(payload => db.add({ __table: 'lease_parties', id: crypto.randomUUID(), created_at: new Date().toISOString(), ...payload }));
-      queryClient.invalidateQueries({ queryKey: ['lease_parties'] });
+      if (created && selectedTenants.length > 0) {
+        const leaseId = created.id as string;
+        const inserts = selectedTenants.map(tenantId => ({
+          lease_id: leaseId,
+          tenant_id: tenantId,
+          ruolo: 'intestatario',
+          quota_canone_percentuale: null,
+          note: null,
+        }));
+        inserts.forEach(payload => db.add({ __table: 'lease_parties', id: crypto.randomUUID(), created_at: new Date().toISOString(), ...payload }));
+        queryClient.invalidateQueries({ queryKey: ['lease_parties'] });
+      }
     }
     
     form.reset();
@@ -222,22 +256,22 @@ export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+            <DialogTrigger asChild>
         {trigger || (
           <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Nuovo Contratto
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nuovo Contratto
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Nuovo Contratto di Locazione
+                  <FileText className="h-5 w-5" />
+                  {isEditing ? 'Modifica Contratto di Locazione' : 'Nuovo Contratto di Locazione'}
           </DialogTitle>
           <DialogDescription>
-            Inserisci i dati del contratto
+                  {isEditing ? 'Aggiorna i dati del contratto' : 'Inserisci i dati del contratto'}
           </DialogDescription>
         </DialogHeader>
         
@@ -384,6 +418,9 @@ export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
                           selected={field.value}
                           onSelect={field.onChange}
                           initialFocus
+                          captionLayout="dropdown"
+                          fromYear={1900}
+                          toYear={2100}
                           className="p-3 pointer-events-auto"
                         />
                       </PopoverContent>
@@ -419,6 +456,9 @@ export function LeaseForm({ unitId, trigger, onSuccess }: LeaseFormProps) {
                           selected={field.value}
                           onSelect={field.onChange}
                           initialFocus
+                          captionLayout="dropdown"
+                          fromYear={1900}
+                          toYear={2100}
                           className="p-3 pointer-events-auto"
                         />
                       </PopoverContent>

@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -119,9 +120,13 @@ export function NoteForm({ note, unitId, propertyId, trigger, onSuccess }: NoteF
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Data</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} value={field.value || ''} />
-                  </FormControl>
+                  <DatePicker
+                    value={field.value || null}
+                    onChange={(v) => field.onChange(v || '')}
+                    minYear={1900}
+                    maxYear={2100}
+                    placeholder="Seleziona data (opzionale)"
+                  />
                   <FormMessage />
                 </FormItem>
               )}

@@ -17,42 +17,22 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+// Componenti di protezione rotte
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse text-muted-foreground">Caricamento...</div>
-      </div>
-    );
-  }
-  
-  if (!user) {
-    return <Navigate to="/auth" replace />;
-  }
-  
+  if (loading) return <div className="flex h-screen items-center justify-center">Caricamento...</div>;
+  if (!user) return <Navigate to="/auth" replace />;
   return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse text-muted-foreground">Caricamento...</div>
-      </div>
-    );
-  }
-  
-  if (user) {
-    return <Navigate to="/" replace />;
-  }
-  
+  if (loading) return <div className="flex h-screen items-center justify-center">Caricamento...</div>;
+  if (user) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
+// Definizione delle rotte
 const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<PublicRoute><AuthPage /></PublicRoute>} />
@@ -67,21 +47,31 @@ const AppRoutes = () => (
 
 const App = () => {
   useEffect(() => {
-    db.healthCheck();
+    // Inizializza il DB locale
+    try {
+      db.healthCheck();
+    } catch (e) {
+      console.error("DB init error", e);
+    }
   }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        {/* AGGIUNTA LA PROPRIETÀ BASENAME QUI SOTTO: */}
-        <HashRouter basename="/gestionale-immobiliare">
+        
+        {/* Router configurato correttamente */}
+        <HashRouter>
           <AuthProvider>
             <GlobalPropertyProvider>
-              <AppRoutes />
+              <div className="min-h-screen bg-background font-sans antialiased">
+                <AppRoutes />
+              </div>
             </GlobalPropertyProvider>
           </AuthProvider>
         </HashRouter>
+
       </TooltipProvider>
     </QueryClientProvider>
   );

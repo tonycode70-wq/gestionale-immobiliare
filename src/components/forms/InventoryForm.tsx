@@ -4,6 +4,7 @@
  import { z } from 'zod';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
+ import { DatePicker } from '@/components/ui/date-picker';
  import { Textarea } from '@/components/ui/textarea';
  import {
    Dialog,
@@ -239,15 +240,19 @@ export function InventoryForm({ item, unitId, cadastralUnitId, trigger, onSucces
               />
              </div>
  
-             <FormField
+            <FormField
                control={form.control}
                name="data_inserimento"
                render={({ field }) => (
                  <FormItem>
                    <FormLabel>Data Inserimento *</FormLabel>
-                   <FormControl>
-                     <Input type="date" {...field} />
-                   </FormControl>
+                   <DatePicker
+                     value={field.value}
+                     onChange={(v) => field.onChange(v || '')}
+                     minYear={1900}
+                     maxYear={2100}
+                     placeholder="Seleziona data"
+                   />
                    <FormMessage />
                  </FormItem>
                )}

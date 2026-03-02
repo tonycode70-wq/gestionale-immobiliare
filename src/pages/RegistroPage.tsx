@@ -10,7 +10,7 @@ import { EllipsisVertical, Pencil, Trash2, Mail, MessageCircle } from 'lucide-re
 import { formatCurrency } from '@/lib/propertyUtils';
 import { calculateIMU, type IMUResult, calculateCedolareSecca, type CedolareResult } from '@/lib/taxCalculations';
 import { useCadastral } from '@/hooks/useCadastral';
-import { cn } from '@/lib/utils';
+import { cn, calculateMonthlyNet, round2 } from '@/lib/utils';
 import { usePayments, type Payment } from '@/hooks/usePayments';
 import { useExpenses } from '@/hooks/useExpenses';
 import { useProperties, useUnits } from '@/hooks/useProperties';
@@ -144,7 +144,6 @@ const RegistroPage = () => {
       }, 0) * 100
     ) / 100;
     const speseStraord = filteredExpenses.reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
-    const nettoReale = incassatoTotale - cedolareTasse - speseStraord;
     // Monthly breakdown for Card Blu 2.0
     const unitLease = selectedUnit === 'all' 
       ? null 
@@ -174,7 +173,17 @@ const RegistroPage = () => {
       });
       imuMensile = Math.round((imuResult.impostaAnnua / 12) * 100) / 100;
     }
-    const nettoRealeMensile = Math.round((incassatoTotale - cedolareMensile - imuMensile - speseStraord) * 100) / 100;
+    const affittoIncassatoMese = imponibile;
+    const speseIncassateMese = speseCondominialiIncassate;
+    const incassatoTotaleMese = incassatoTotale;
+    const nettoMese = calculateMonthlyNet({
+      incassatoTotaleMese,
+      speseIncassateMese,
+      speseStraordMese: speseStraord,
+      imuMensile,
+    });
+    const nettoReale = round2(nettoMese);
+    const nettoRealeMensile = round2(nettoMese);
     const statoPagamenti = filteredPayments.every(p => p.payment.stato_pagamento === 'PAGATO') ? 'OK' : 'MANCANTI';
     const scadenzeAttive: Array<{ label: string; importo: number }> = [];
     if (selectedUnit !== 'all' && unitLease) {
@@ -199,6 +208,9 @@ const RegistroPage = () => {
     return {
       totaleAffittoImponibile: imponibile,
       totaleSpese: speseCondominialiIncassate,
+      speseIncassateMese: speseCondominialiIncassate,
+      affittoIncassatoMese: affittoIncassatoMese,
+      incassatoTotaleMese: incassatoTotaleMese,
       incassatoTotale,
       cedolareTasse,
       speseStraord,

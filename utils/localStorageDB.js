@@ -23,31 +23,72 @@ const defaultState = () => ({
   notes: [],
 });
 
-const validateState = (state) => {
-  if (!state || typeof state !== 'object') return false;
-  const requiredArrays = [
-    'properties',
-    'units',
-    'leases',
-    'payments',
-    'extra_expenses',
-    'tenants',
-    'lease_parties',
-    'reminders',
-    'cadastral_units',
-    'property_admins',
-    'unit_inventories',
-    'inventory_rooms',
-    'notifications',
-    'notes',
-  ];
-  return requiredArrays.every((k) => Array.isArray(state[k]));
+const REQUIRED_ARRAY_KEYS = [
+  'properties',
+  'units',
+  'leases',
+  'payments',
+  'extra_expenses',
+  'tenants',
+  'lease_parties',
+  'reminders',
+  'cadastral_units',
+  'property_admins',
+  'unit_inventories',
+  'inventory_rooms',
+  'notifications',
+  'notes',
+];
+
+const normalizeState = (raw) => {
+  if (!raw || typeof raw !== 'object') return defaultState();
+  const base = { ...raw };
+  if (!base.meta || typeof base.meta !== 'object') {
+    base.meta = {};
+  }
+  if (!base.meta.current_selection || typeof base.meta.current_selection !== 'object') {
+    base.meta.current_selection = { propertyId: 'all', unitId: 'all' };
+  } else {
+    base.meta.current_selection = {
+      propertyId: base.meta.current_selection.propertyId || 'all',
+      unitId: base.meta.current_selection.unitId || 'all',
+    };
+  }
+  REQUIRED_ARRAY_KEYS.forEach((k) => {
+    if (!Array.isArray(base[k])) base[k] = [];
+  });
+  base.version = String(base.version || '2.0');
+  return base;
+};
+
+const inferTable = (it) => {
+  if (!it || typeof it !== 'object') return null;
+  if (it.__table || it.table || it._table) return it.__table || it.table || it._table;
+  if ('competenza_anno' in it && 'competenza_mese' in it) return 'payments';
+  if ('unit_id' in it && 'canone_mensile' in it) return 'leases';
+  if ('property_id' in it && 'nome_interno' in it) return 'units';
+  if ('nome_complesso' in it && !('unit_id' in it)) return 'properties';
+  if ('tenant_id' in it && 'lease_id' in it && 'ruolo' in it) return 'lease_parties';
+  if ('tipo' in it && 'titolo' in it && 'data_scadenza' in it) return 'reminders';
+  if ('categoria_catastale' in it && 'rendita_euro' in it) return 'cadastral_units';
+  if ('ragione_sociale' in it && ('telefono_studio' in it || 'email' in it)) return 'property_admins';
+  if ('nome_bene' in it && 'quantita' in it) return 'unit_inventories';
+  if ('categoria' in it && ('importo_effettivo' in it || 'importo_previsto' in it)) return 'extra_expenses';
+  if ('contenuto' in it && 'titolo' in it) return 'notes';
+  if ('riferimento_tipo' in it || 'esito' in it) return 'notifications';
+  return null;
 };
 
 const arrayToState = (items) => {
   const st = defaultState();
   (Array.isArray(items) ? items : []).forEach((it) => {
-    const tbl = it && it.__table;
+    let tbl = it && (it.__table || it.table || it._table);
+    if (!tbl) {
+      tbl = inferTable(it);
+      if (tbl) {
+        it = { ...it, __table: tbl };
+      }
+    }
     if (tbl && st[tbl] && Array.isArray(st[tbl])) {
       st[tbl].push(it);
     }
@@ -63,9 +104,9 @@ const readState = () => {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       const st = arrayToState(parsed);
-      return validateState(st) ? st : defaultState();
+      return normalizeState(st);
     }
-    return validateState(parsed) ? parsed : defaultState();
+    return normalizeState(parsed);
   } catch {
     return defaultState();
   }
@@ -162,8 +203,12 @@ export function getState() {
 }
 
 export function replaceState(next) {
-  const st = next && typeof next === 'object' ? next : defaultState();
-  cache = validateState(st) ? st : defaultState();
+  const st = Array.isArray(next)
+    ? arrayToState(next)
+    : next && typeof next === 'object'
+      ? next
+      : defaultState();
+  cache = normalizeState(st);
   syncStorage();
   return cache;
 }
@@ -233,7 +278,7 @@ export function deleteItem(id) {
 
 export function replaceAll(items) {
   const st = arrayToState(items);
-  cache = validateState(st) ? st : defaultState();
+  cache = normalizeState(st);
   syncStorage();
   return flattenAll(cache);
 }

@@ -297,6 +297,9 @@ export function PaymentForm({ trigger, unitId, payment, lease, unit, tenant, ope
                         selected={field.value}
                         onSelect={field.onChange}
                         initialFocus
+                        captionLayout="dropdown"
+                        fromYear={1900}
+                        toYear={2100}
                         className="p-3 pointer-events-auto"
                       />
                     </PopoverContent>

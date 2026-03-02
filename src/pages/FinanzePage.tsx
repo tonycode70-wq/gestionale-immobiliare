@@ -143,7 +143,7 @@ const FinanzePage = () => {
       ? (annoContratto === 1 ? 0 : Math.round(lordoAnnuo * aliquota * 100) / 100)
       : 0;
     const nettoAnnuo = Math.round((incassatoAnno - speseAnno - cedolareTot) * 100) / 100;
-    const mesiTrascorsi = Math.min(now.getMonth() + 1, 12);
+    const mesiTrascorsi = selectedYear === now.getFullYear() ? Math.min(now.getMonth() + 1, 12) : 12;
     const nettoMedioMensile = Math.round((nettoAnnuo / Math.max(1, mesiTrascorsi)) * 100) / 100;
     return { canoneMensile, lordoAnnuo, incassatoAnno, speseAnno, cedolareTot, nettoAnnuo, nettoMedioMensile, regime, isCedolare, aliquota, annoContratto };
   }, [filteredPayments, expensesForSelection, mainLease, now, selectedYear]);
@@ -178,17 +178,8 @@ const FinanzePage = () => {
       .sort((a, b) => a.d.getTime() - b.d.getTime())[0];
     return upcoming || null;
   }, [annualNumbers.isCedolare, cedolareIndicators.scadenze, now]);
-  const utileOggi = useMemo(() => {
-    const today = now;
-    const incassatoOggi = filteredPayments
-      .filter(p => p.data_pagamento && new Date(p.data_pagamento).getFullYear() === selectedYear && new Date(p.data_pagamento) <= today)
-      .reduce((sum, p) => sum + (p.importo_canone_pagato || 0), 0);
-    const speseOggi = expensesForSelection
-      .filter(e => e.data_pagamento && new Date(e.data_pagamento).getFullYear() === selectedYear && new Date(e.data_pagamento) <= today)
-      .reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
-    return Math.round((incassatoOggi - speseOggi - cedolareIndicators.versata) * 100) / 100;
-  }, [filteredPayments, expensesForSelection, cedolareIndicators.versata, now, selectedYear]);
 
+  // IMU summary (annua) per calcolare la quota mensile da accantonare
   const imuSummary: IMUResult | null = useMemo(() => {
     if (selectedUnit === 'all' || !cadastralUnits || cadastralUnits.length === 0) return null;
     const unit = units.find(u => u.id === selectedUnit);
@@ -213,6 +204,39 @@ const FinanzePage = () => {
       riduzione_canone_concordato: !!hasConcordato,
     });
   }, [cadastralUnits, properties, units, selectedUnit, selectedYear, leases]);
+  const { utileOggi, nettoMedioMensileOggi } = useMemo(() => {
+    const today = now;
+    const donePmts = filteredPayments
+      .filter(p => p.data_pagamento && new Date(p.data_pagamento).getFullYear() === selectedYear && new Date(p.data_pagamento) <= today);
+    const incassatoTotaleAdOggi = donePmts.reduce((sum, p) => sum + (p.importo_canone_pagato || 0) + (p.importo_spese_pagato || 0), 0);
+    const speseIncassateAdOggi = donePmts.reduce((sum, p) => sum + (p.importo_spese_pagato || 0), 0);
+    const speseStraordAdOggi = expensesForSelection
+      .filter(e => e.data_pagamento && new Date(e.data_pagamento).getFullYear() === selectedYear && new Date(e.data_pagamento) <= today)
+      .reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
+    const imuAnnua = imuSummary?.impostaAnnua || 0;
+    const imuMensile = Math.round(((imuAnnua / 12) || 0) * 100) / 100;
+    const isFirstYear = annualNumbers.annoContratto === 1;
+    const cedolareMensile = (!annualNumbers.isCedolare || isFirstYear || !mainLease)
+      ? 0
+      : Math.round((mainLease.canone_mensile * (annualNumbers.aliquota || 0)) * 100) / 100;
+    const mesiTrascorsi = selectedYear === now.getFullYear() ? Math.min(now.getMonth() + 1, 12) : 12;
+    const utile = Math.round((incassatoTotaleAdOggi - speseIncassateAdOggi - speseStraordAdOggi - (imuMensile * mesiTrascorsi) - (cedolareMensile * mesiTrascorsi)) * 100) / 100;
+    const medio = Math.round(((utile / Math.max(1, mesiTrascorsi)) || 0) * 100) / 100;
+    // Debug delle componenti del calcolo
+    console.debug('[UtileNettoAdOggi]', {
+      incassatoTotaleAdOggi,
+      speseIncassateAdOggi,
+      speseStraordAdOggi,
+      imuMensile,
+      cedolareMensile,
+      mesiTrascorsi,
+      utile,
+      medio,
+    });
+    return { utileOggi: utile, nettoMedioMensileOggi: medio };
+  }, [filteredPayments, expensesForSelection, imuSummary?.impostaAnnua, annualNumbers.annoContratto, annualNumbers.aliquota, annualNumbers.isCedolare, mainLease, now, selectedYear]);
+
+  // (ImuSummary già dichiarato sopra)
 
   const netProjection = useMemo(() => {
     if (!mainLease || selectedUnit === 'all') return 0;
@@ -377,7 +401,7 @@ const FinanzePage = () => {
               </div>
               <div className="flex justify-between items-center py-2 border-b border-border">
                 <span className="text-sm text-muted-foreground">Netto medio mensile</span>
-                <span className="font-semibold text-success">{formatCurrency(annualNumbers.nettoMedioMensile)}</span>
+                <span className="font-semibold text-success">{formatCurrency(nettoMedioMensileOggi)}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-border">
                 <span className="text-sm text-muted-foreground">Spese straordinarie (anno)</span>

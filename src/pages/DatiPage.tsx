@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { formatCurrency, formatDate, getContractTypeLabel, getRegimeLabel } from '@/lib/propertyUtils';
 import { StatusBadge } from '@/components/common';
 import { PropertyForm, UnitForm, TenantForm, LeaseForm } from '@/components/forms';
+import { TenantEditForm } from '@/components/forms/TenantEditForm';
+import { GuarantorForm } from '@/components/forms/GuarantorForm';
 import { CadastralForm } from '@/components/forms/CadastralForm';
 import { AdminForm } from '@/components/forms/AdminForm';
 import { InventoryForm } from '@/components/forms/InventoryForm';
@@ -254,9 +256,21 @@ const DatiPage = () => {
                         <div className="text-sm text-muted-foreground">Nessun conduttore associato</div>
                       )}
                     </div>
-                    <Button size="sm" variant="outline" className="mt-2" onClick={() => setShowPartyEditor(true)}>
-                      Modifica conduttore
-                    </Button>
+                    {(() => {
+                      const currentMain = parties?.find(p => p.ruolo === 'intestatario');
+                      const t = currentMain?.tenant as any | undefined;
+                      return t ? (
+                        <TenantEditForm
+                          tenant={t}
+                          trigger={<Button size="sm" variant="outline" className="mt-2">Modifica conduttore</Button>}
+                          onSuccess={() => {}}
+                        />
+                      ) : (
+                        <Button size="sm" variant="outline" className="mt-2" onClick={() => setShowPartyEditor(true)}>
+                          Seleziona conduttore
+                        </Button>
+                      );
+                    })()}
                   </div>
 
                   <div className="mt-4 pt-4 border-t space-y-2">
@@ -283,7 +297,13 @@ const DatiPage = () => {
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between"><span className="text-muted-foreground">Presenza</span><span>No</span></div>
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setAddingGuarantor(true)}>Aggiungi garante</Button>
+                          {lease && (
+                            <GuarantorForm
+                              leaseId={lease.id}
+                              trigger={<Button size="sm" variant="outline">Aggiungi garante</Button>}
+                              onSuccess={() => {}}
+                            />
+                          )}
                         </div>
                       </div>
                     )}
