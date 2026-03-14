@@ -44,6 +44,9 @@ const propertySchema = z.object({
   provincia: z.string().max(50).optional().nullable(),
   codice_fiscale_ente: z.string().max(20).optional().nullable(),
   note_generali: z.string().max(1000).optional().nullable(),
+  proprietario_nome: z.string().max(100).optional().nullable(),
+  proprietario_indirizzo: z.string().max(200).optional().nullable(),
+  proprietario_cf_piva: z.string().max(30).optional().nullable(),
 });
 
 type PropertyFormData = z.infer<typeof propertySchema>;
@@ -75,6 +78,9 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
       provincia: property?.provincia || '',
       codice_fiscale_ente: property?.codice_fiscale_ente || '',
       note_generali: property?.note_generali || '',
+      proprietario_nome: property?.proprietario_nome || '',
+      proprietario_indirizzo: property?.proprietario_indirizzo || '',
+      proprietario_cf_piva: property?.proprietario_cf_piva || '',
     },
   });
 
@@ -89,6 +95,9 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
         provincia: property.provincia || '',
         codice_fiscale_ente: property.codice_fiscale_ente || '',
         note_generali: property.note_generali || '',
+        proprietario_nome: property.proprietario_nome || '',
+        proprietario_indirizzo: property.proprietario_indirizzo || '',
+        proprietario_cf_piva: property.proprietario_cf_piva || '',
       });
     }
   }, [property, form]);
@@ -105,6 +114,9 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
         provincia: data.provincia || null,
         codice_fiscale_ente: data.codice_fiscale_ente || null,
         note_generali: data.note_generali || null,
+        proprietario_nome: data.proprietario_nome || null,
+        proprietario_indirizzo: data.proprietario_indirizzo || null,
+        proprietario_cf_piva: data.proprietario_cf_piva || null,
       });
     } else {
       const created = await createProperty.mutateAsync({
@@ -116,6 +128,9 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
         provincia: data.provincia || null,
         codice_fiscale_ente: data.codice_fiscale_ente || null,
         note_generali: data.note_generali || null,
+        proprietario_nome: data.proprietario_nome || null,
+        proprietario_indirizzo: data.proprietario_indirizzo || null,
+        proprietario_cf_piva: data.proprietario_cf_piva || null,
       });
       setCreatedPropertyId((created as unknown as Property).id);
       setStep('admin');
@@ -247,6 +262,54 @@ export function PropertyForm({ property, trigger, onSuccess }: PropertyFormProps
                     </FormItem>
                   )}
                 />
+              </div>
+
+              <div className="space-y-4 p-3 border rounded-lg bg-muted/20">
+                <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  Dati Proprietario (Locatore)
+                </h4>
+                <FormField
+                  control={form.control}
+                  name="proprietario_nome"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nome/Ragione Sociale Proprietario</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Es: Sabrina Cinzia Mozzo" {...field} value={field.value || ''} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="proprietario_indirizzo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Indirizzo Proprietario</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Via, Civico, CAP, Città" {...field} value={field.value || ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="proprietario_cf_piva"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>CF / P.IVA Proprietario</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Codice Fiscale o P.IVA" {...field} value={field.value || ''} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
               <FormField

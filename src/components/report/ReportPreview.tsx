@@ -10,6 +10,8 @@ import { useCadastral } from '@/hooks/useCadastral';
 import { usePropertyAdmins } from '@/hooks/usePropertyAdmins';
 import { formatCurrency, formatDate } from '@/lib/propertyUtils';
 import { db } from '../../../utils/localStorageDB.js';
+import { calculateIMU } from '@/lib/taxCalculations';
+import { round2 } from '@/lib/utils';
 
 interface ReportPreviewProps {
   unitId: string;
@@ -38,11 +40,55 @@ export function ReportPreview({ unitId, year, trigger }: ReportPreviewProps) {
     });
   }, [payments, leases, unitId, year]);
 
-  const totals = useMemo(() => {
+  const financialData = useMemo(() => {
     const incassato = paymentsYear.reduce((sum, p) => sum + (p.importo_canone_pagato || 0) + (p.importo_spese_pagato || 0), 0);
-    const spese = expenses.reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
-    return { incassato, spese };
-  }, [paymentsYear, expenses]);
+    const speseCondominialiIncassate = paymentsYear.reduce((sum, p) => sum + (p.importo_spese_pagato || 0), 0);
+    const speseStraord = expenses.reduce((sum, e) => sum + (e.importo_effettivo || 0), 0);
+
+    // IMU logic consistent with FinanzePage
+    let imuMensile = 0;
+    if (cadastralUnits && cadastralUnits.length > 0) {
+      const comune = (property?.citta || 'Desenzano del Garda').toLowerCase();
+      const data = cadastralUnits.map(cu => ({ categoria_catastale: cu.categoria_catastale, rendita_euro: cu.rendita_euro }));
+      const hasConcordato = lease?.tipo_contratto === '3+2_agevolato';
+      const imuResult = calculateIMU(data, {
+        anno: year,
+        comune,
+        aliquota_per_mille: 10.6,
+        percentuale_possesso: 100,
+        mesi_possesso: 12,
+        is_prima_casa: false,
+        detrazioni_euro: 0,
+        riduzione_canone_concordato: !!hasConcordato,
+      });
+      imuMensile = round2(imuResult.impostaAnnua / 12);
+    }
+
+    // Cedolare logic consistent with FinanzePage
+    const isCedolare = lease ? (lease.regime_locativo === 'cedolare_21' || lease.regime_locativo === 'cedolare_10') : false;
+    const aliquota = lease?.regime_locativo === 'cedolare_21' ? 0.21 : lease?.regime_locativo === 'cedolare_10' ? 0.10 : 0;
+    const startYear = lease ? new Date(lease.data_inizio).getFullYear() : year;
+    const annoContratto = year - startYear + 1;
+    const isFirstYear = annoContratto === 1;
+    const cedolareMensile = (!isCedolare || isFirstYear) ? 0 : round2(lease!.canone_mensile * aliquota);
+
+    const now = new Date();
+    const mesiTrascorsi = year === now.getFullYear() ? Math.min(now.getMonth() + 1, 12) : 12;
+
+    const totaleImposteOggi = round2((imuMensile + cedolareMensile) * mesiTrascorsi);
+    const utileNetto = round2(incassato - speseCondominialiIncassate - speseStraord - totaleImposteOggi);
+
+    return {
+      incassato,
+      speseCondominialiIncassate,
+      speseStraord,
+      imuMensile,
+      cedolareMensile,
+      mesiTrascorsi,
+      totaleImposteOggi,
+      utileNetto,
+    };
+  }, [paymentsYear, expenses, cadastralUnits, lease, property, year]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => {
@@ -127,15 +173,23 @@ export function ReportPreview({ unitId, year, trigger }: ReportPreviewProps) {
             </div>
           </div>
           <div className="mobile-card">
-            <h3 className="font-semibold">Bilancio</h3>
-            <div className="flex justify-between text-sm">
-              <span>Totale Incassi</span><span>{formatCurrency(totals.incassato)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Totale Spese</span><span>{formatCurrency(totals.spese)}</span>
-            </div>
-            <div className="flex justify-between text-sm font-semibold">
-              <span>Utile Netto Reale</span><span>{formatCurrency(totals.incassato - totals.spese)}</span>
+            <h3 className="font-semibold">Bilancio (YTD {financialData.mesiTrascorsi} mesi)</h3>
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm">
+                <span>Totale Incassato (Lordo)</span><span>{formatCurrency(financialData.incassato)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>- Spese Condominiali (reali)</span><span>{formatCurrency(financialData.speseCondominialiIncassate)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>- Spese Straordinarie</span><span>{formatCurrency(financialData.speseStraord)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>- Accantonamento Imposte (IMU+Ced)</span><span>{formatCurrency(financialData.totaleImposteOggi)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-bold pt-2 border-t">
+                <span>Utile Netto Reale</span><span>{formatCurrency(financialData.utileNetto)}</span>
+              </div>
             </div>
           </div>
         </div>

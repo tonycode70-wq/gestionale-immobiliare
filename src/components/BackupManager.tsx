@@ -29,9 +29,26 @@ export function BackupManager() {
     };
   };
 
+  const extractReceiptMeta = () => {
+    try {
+      const meta: Record<string, string> = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || '';
+        if (k.startsWith('rcpt_counter_')) {
+          const v = localStorage.getItem(k);
+          if (typeof v === 'string') meta[k] = v;
+        }
+      }
+      return meta;
+    } catch {
+      return {};
+    }
+  };
+
   const handleDownload = () => {
     const fullState = db.getState();
-    const blob = new Blob([JSON.stringify(fullState, null, 2)], { type: "application/json" });
+    const payload = { ...fullState, receipt_meta: extractReceiptMeta() };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const ts = new Date();
     const name = `backup_APP_DATA_V1_${ts.getFullYear()}${String(ts.getMonth() + 1).padStart(2, "0")}${String(ts.getDate()).padStart(2, "0")}_${String(ts.getHours()).padStart(2, "0")}${String(ts.getMinutes()).padStart(2, "0")}${String(ts.getSeconds()).padStart(2, "0")}.json`;
@@ -71,8 +88,27 @@ export function BackupManager() {
           if (typeof window !== "undefined") {
             window.localStorage.removeItem("patrimonio_data");
             window.localStorage.removeItem("patrimonio_last_valid");
+            // Rimuovi anche i vecchi contatori ricevute
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i) || "";
+              if (k.startsWith("rcpt_counter_")) {
+                localStorage.removeItem(k);
+                i--; // Decrementa l'indice poiché la lunghezza è cambiata
+              }
+            }
           }
         } catch {}
+        if (parsed && typeof parsed === 'object' && parsed.receipt_meta && typeof parsed.receipt_meta === 'object') {
+          try {
+            const meta = parsed.receipt_meta as Record<string, string>;
+            Object.keys(meta || {}).forEach(k => {
+              if (k.startsWith('rcpt_counter_')) {
+                localStorage.setItem(k, String(meta[k] ?? '0'));
+              }
+            });
+          } catch {}
+          delete parsed.receipt_meta;
+        }
         const summary = summarize(parsed);
         const sizeKB = Math.round((text.length / 1024) * 100) / 100;
         if (Array.isArray(parsed)) {

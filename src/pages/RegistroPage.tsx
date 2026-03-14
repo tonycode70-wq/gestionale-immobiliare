@@ -24,6 +24,7 @@ import type { Tenant } from '@/types';
 import { useGlobalProperty } from '@/hooks/useGlobalProperty';
 import { SyncIndicator } from '@/components/SyncIndicator';
 import { ReportPreview } from '@/components/report/ReportPreview';
+import { generateReceiptPDFForPayment, generateZipForPayments, downloadBlob } from '@/services/receiptService';
 
 const RegistroPage = () => {
   const now = new Date();
@@ -333,6 +334,20 @@ const RegistroPage = () => {
           <div className="flex items-center gap-2">
             {selectedUnit !== 'all' && <ReportPreview unitId={selectedUnit} year={selectedYear} />}
             <SyncIndicator />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                const ids = filteredPayments
+                  .filter(p => p.payment.stato_pagamento === 'PAGATO')
+                  .map(p => p.payment.id);
+                if (ids.length === 0) return;
+                const blob = await generateZipForPayments(ids, 'property');
+                downloadBlob(`Ricevute_${selectedYear}_${String(selectedMonth).padStart(2, '0')}.zip`, blob);
+              }}
+            >
+              Ricevute mese (ZIP)
+            </Button>
           </div>
         </div>
         <MonthSelector 
@@ -494,6 +509,17 @@ const RegistroPage = () => {
                         Affitto: {formatCurrency(payment.importo_canone_pagato || 0)} • Spese: {formatCurrency(payment.importo_spese_pagato || 0)}
                       </span>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          const blob = await generateReceiptPDFForPayment(payment.id, 'property');
+                          downloadBlob(`Ricevuta_${payment.id}.pdf`, blob);
+                        }}
+                      >
+                        Ricevuta
+                      </Button>
                     {payment.stato_pagamento !== 'PAGATO' && (
                       <Button 
                         size="sm" 
@@ -505,6 +531,7 @@ const RegistroPage = () => {
                         Pagato oggi
                       </Button>
                     )}
+                    </div>
                   </div>
                   {payment.stato_pagamento === 'PARZIALE' && (
                     <div className="mt-2 p-2 bg-warning/10 rounded-lg text-xs text-warning-foreground">

@@ -15,6 +15,9 @@ export interface Property {
   codice_fiscale_ente: string | null;
   note_generali: string | null;
   admin_id: string | null;
+  proprietario_nome: string | null;
+  proprietario_indirizzo: string | null;
+  proprietario_cf_piva: string | null;
   created_at: string;
   updated_at: string;
 }
